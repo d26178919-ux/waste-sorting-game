@@ -16,15 +16,15 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- CSS styles -->
-<link rel="stylesheet" href="../CSS/game-styles.css">
+<link rel="stylesheet" href="game-styles.css">
 </head>
 <!-- HTML page structure -->
 <body class="flex flex-col items-center">
 
 <div id="intro" class="intro-screen" role="dialog" aria-label="วิดีโอแนะนำเกม">
-  <div class="intro-fallback" aria-hidden="true"><img src="../../Image&Video/Image/dnature.png" alt=""></div>
+  <div class="intro-fallback" aria-hidden="true"><img src="dnature.png" alt=""></div>
   <video id="introVideo" class="intro-video" autoplay muted playsinline preload="auto" aria-hidden="true">
-    <source src="../../Image&Video/Video/intro.mp4" type="video/mp4">
+    <source src="intro.mp4" type="video/mp4">
   </video>
   <div class="intro-controls">
     <p id="introStatus" class="intro-status" role="status" aria-live="polite"></p>
@@ -37,7 +37,7 @@
   <canvas id="bgc" class="fixed inset-0 w-full h-full pointer-events-none"></canvas>
   <div class="fixed inset-0 pointer-events-none" style="background:rgba(0,0,0,.35)"></div>
   <a class="dnature-brand" href="#start" aria-label="Nature — กลับไปหน้าแรก">
-    <img src="../../Image&Video/Image/dnature.png" alt="">
+    <img src="dnature.png" alt="">
     <span>nature</span>
   </a>
   <a href="#startBtn" class="skip">ข้ามไปที่ปุ่มเริ่มต้นเล่น</a>
@@ -153,6 +153,6 @@
 </div>
 
 <!-- JavaScript game behavior -->
-<script src="../JS/game-logic.js"></script>
+<script src="game-logic.js"></script>
 </body>
 </html>
