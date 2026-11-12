@@ -5,7 +5,7 @@
 html,body{height:100%}
 body{font-family:'LKKaohom','Poppins',sans-serif;color:var(--text);background:var(--bg2);touch-action:manipulation;user-select:none;-webkit-user-select:none;overflow-x:hidden}
 .font-mali{font-family:inherit}
-body.game-over{background-color:#e4efdf;background-image:url("../../Image&Video/Image/game-over-landscape.svg");background-position:center;background-repeat:no-repeat;background-size:cover;background-attachment:fixed}
+body.game-over{background-color:#e4efdf;background-image:url("game-over-landscape.svg");background-position:center;background-repeat:no-repeat;background-size:cover;background-attachment:fixed}
 body.game-over #end>.home-link{color:#f8faf2;text-shadow:0 1px 3px rgba(20,40,22,.55)}
 body.game-over #end>.home-link:hover{color:#d9f99d}
 body.game-over #end>.home-link:focus-visible{outline-color:#fff}
