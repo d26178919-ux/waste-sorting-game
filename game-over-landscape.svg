@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#eef7e9"/>
+      <stop offset=".36" stop-color="#c5ddc0"/>
+      <stop offset="1" stop-color="#355b43"/>
+    </linearGradient>
+    <linearGradient id="currentA" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#6b9674"/>
+      <stop offset=".5" stop-color="#84a982"/>
+      <stop offset="1" stop-color="#527c62"/>
+    </linearGradient>
+    <linearGradient id="currentB" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#8baa7c"/>
+      <stop offset=".5" stop-color="#71936a"/>
+      <stop offset="1" stop-color="#52724e"/>
+    </linearGradient>
+    <linearGradient id="currentC" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#537754"/>
+      <stop offset=".5" stop-color="#44684c"/>
+      <stop offset="1" stop-color="#35563f"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .flow-a{animation:flow 24s ease-in-out infinite alternate}
+    .flow-b{animation:flow 31s ease-in-out infinite alternate-reverse}
+    .ripple{stroke-dasharray:3 34;animation:ripple 16s linear infinite}
+    @keyframes flow{from{transform:translateX(-24px)}to{transform:translateX(24px)}}
+    @keyframes ripple{to{stroke-dashoffset:-148}}
+    @media(prefers-reduced-motion:reduce){.flow-a,.flow-b,.ripple{animation:none}}
+  </style>
+  <path fill="url(#water)" d="M0 0h1600v900H0z"/>
+  <path fill="#dce9d2" d="M-120 300c190-64 322-25 480 19 189 52 307-24 469-29 214-7 300 74 513 35 126-23 205-51 378-18v214H-120Z"/>
+  <g class="flow-a">
+    <path fill="url(#currentA)" d="M-100 405c176-81 310-65 474-8 165 58 267 54 421-7 175-69 296-90 460-29 166 62 276 76 465 12v287H-100Z"/>
+    <path fill="#a6c394" opacity=".52" d="M-100 480c196-56 321-12 479 28 173 44 278 20 438-31 176-57 291-52 452 5 161 56 295 70 451 23v74c-168 44-298 17-462-30-160-46-272-45-428 9-168 58-285 77-465 22-168-52-288-79-465-24Z"/>
+  </g>
+  <g class="flow-b">
+    <path fill="url(#currentB)" d="M-130 575c179-58 310-50 473-2 164 49 267 50 427 1 181-55 300-72 464-24 162 47 296 71 456 17v291H-130Z"/>
+    <path fill="#9db47c" opacity=".3" d="M-130 646c183-47 308-18 471 28 163 46 267 42 427-6 182-54 296-50 459-3 164 48 297 61 463 13v55c-165 41-300 28-464-18-162-46-275-50-448 2-170 51-288 59-456 12-164-46-299-69-452-29Z"/>
+  </g>
+  <path fill="url(#currentC)" d="M-100 760c182-44 310-30 474 9 160 39 275 43 433 7 179-40 293-54 454-14 163 40 299 54 459 14v160H-100Z"/>
+  <path fill="none" stroke="#d5e6c5" stroke-width="2" opacity=".2" class="ripple" d="M-80 386c180-50 292-28 456 19 165 47 284 33 443-23 174-62 294-61 453-10 154 49 286 62 420 20M-70 557c173-47 292-23 458 25 167 48 278 35 437-15 169-53 288-51 452-6 160 44 287 56 413 18M-80 725c173-34 302-7 460 31 159 38 279 35 438-3 170-41 290-39 449-2 158 37 289 50 422 16"/>
+</svg>
