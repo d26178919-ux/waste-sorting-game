@@ -15,12 +15,12 @@
   <main>
     <h1>กำลังเปิดเกมแยกขยะ</h1>
     <p id="status" role="status" aria-live="polite">กำลังค้นหาหน้าเกม…</p>
-    <a href="/Game-System/HTML/index.html">เปิดหน้าเกม</a>
-    <a href="/Game-System/HTML/game-page.html">เปิดหน้าเกมสำรอง</a>
+    <a href="Game-System/HTML/game-page.html">เปิดหน้าเกม</a>
+    <a href="Game-System/HTML/admin.html">ระบบหลังบ้าน (แอดมิน)</a>
   </main>
   <script>
     (async()=>{
-      const candidates=['/Game-System/HTML/index.html','/Game-System/HTML/game-page.html'];
+      const candidates=['Game-System/HTML/game-page.html'];
       for(const path of candidates){
         try{
           const response=await fetch(path,{method:'HEAD',cache:'no-store'});
