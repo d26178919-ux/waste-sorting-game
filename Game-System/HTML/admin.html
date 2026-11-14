@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#082016">
+  <title>ระบบหลังบ้าน | เกมแยกขยะ</title>
+  <link rel="stylesheet" href="../CSS/admin.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../JS/database-config.js"></script>
+  <script src="../JS/admin.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <!-- ================= Login ================= -->
+    <section id="loginPanel" class="panel login-panel" aria-labelledby="loginTitle">
+      <p class="eyebrow">WASTE SORTING GAME</p>
+      <h1 id="loginTitle">ระบบหลังบ้าน</h1>
+      <p class="muted">เข้าสู่ระบบด้วยบัญชีผู้ดูแล</p>
+      <form id="loginForm" class="stack">
+        <label for="username">ชื่อผู้ใช้</label>
+        <input id="username" name="username" type="text" autocomplete="username" minlength="1" maxlength="64" required>
+        <label for="password">รหัสผ่าน</label>
+        <div class="password-field">
+          <input id="password" name="password" type="password" autocomplete="current-password" minlength="1" maxlength="128" required>
+          <button class="password-toggle" type="button" data-toggle-password="password" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div>
+        <button class="button primary" type="submit">เข้าสู่ระบบ</button>
+      </form>
+      <p id="loginMessage" class="message" role="status" aria-live="polite"></p>
+      <p class="login-hint">บัญชีเริ่มต้นคือ <code>admin</code> — ระบบจะเตือนให้เปลี่ยนรหัสผ่านหลังเข้าสู่ระบบ</p>
+    </section>
+
+    <!-- ================= Dashboard ================= -->
+    <section id="dashboard" hidden>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">WASTE SORTING GAME</p>
+          <h1>ระบบหลังบ้าน</h1>
+          <p class="admin-meta">
+            ผู้ดูแล: <strong id="adminName">—</strong>
+            <span id="adminRole" class="badge">—</span>
+            <span id="sessionTimer" class="session-timer" hidden></span>
+          </p>
+        </div>
+        <div class="top-actions">
+          <button id="refreshButton" class="button secondary" type="button">โหลดข้อมูลใหม่</button>
+          <button id="specialPasswordButton" class="button secondary" type="button" hidden>ตั้งรหัสพิเศษ</button>
+          <button id="passwordButton" class="button secondary" type="button">เปลี่ยนรหัสผ่าน</button>
+          <button id="logoutButton" class="button secondary" type="button">ออกจากระบบ</button>
+        </div>
+      </header>
+
+      <p id="dashboardMessage" class="message" role="status" aria-live="polite"></p>
+
+      <div id="passwordWarning" class="warning" role="alert" hidden>
+        <span>คุณยังใช้รหัสผ่านเริ่มต้นอยู่ ควรเปลี่ยนก่อนใช้งานจริง</span>
+        <button id="passwordWarningBtn" class="link-button" type="button">เปลี่ยนรหัสผ่านเดี๋ยวนี้</button>
+      </div>
+
+      <div class="stats" aria-label="สถิติ">
+        <article class="stat-card"><span>ผู้เล่นทั้งหมด</span><strong id="playerCount">—</strong></article>
+        <article class="stat-card"><span>คะแนนเฉลี่ย</span><strong id="averageScore">—</strong></article>
+        <article class="stat-card"><span>คะแนนสูงสุด</span><strong id="highestScore">—</strong></article>
+        <article class="stat-card"><span>ผู้เล่นที่ถูกแบน</span><strong id="bannedCount">—</strong></article>
+      </div>
+
+      <nav class="tabs" role="tablist" aria-label="เมนูจัดการ">
+        <button class="tab" data-tab="scores" role="tab" aria-selected="true" aria-controls="tab-scores">คะแนนผู้เล่น</button>
+        <button class="tab" data-tab="banned" role="tab" aria-selected="false" aria-controls="tab-banned">ผู้เล่นที่ถูกแบน</button>
+        <button class="tab" data-tab="audit" role="tab" aria-selected="false" aria-controls="tab-audit">บันทึกกิจกรรม</button>
+        <button class="tab" id="adminsTab" data-tab="admins" role="tab" aria-selected="false" aria-controls="tab-admins" hidden>ผู้ดูแลระบบ</button>
+      </nav>
+
+      <!-- ---------- Scores ---------- -->
+      <section id="tab-scores" class="panel table-panel" role="tabpanel" aria-labelledby="scoresTitle">
+        <div class="table-heading">
+          <div><h2 id="scoresTitle">คะแนนผู้เล่น</h2><p class="muted">ค้นหา เรียงลำดับ และจัดการคะแนนได้จากหน้านี้</p></div>
+          <div class="table-tools">
+            <label class="search"><span class="sr-only">ค้นหาชื่อผู้เล่น</span><input id="searchInput" type="search" placeholder="ค้นหาชื่อผู้เล่น"></label>
+            <button id="exportButton" class="button secondary" type="button">ส่งออก CSV</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col"><button class="sort" type="button" data-sort="name">ชื่อผู้เล่น</button></th>
+                <th scope="col"><button class="sort" type="button" data-sort="score">คะแนน</button></th>
+                <th scope="col"><button class="sort" type="button" data-sort="right_count">ตอบถูก</button></th>
+                <th scope="col"><button class="sort" type="button" data-sort="max_combo">คอมโบสูงสุด</button></th>
+                <th scope="col"><button class="sort" type="button" data-sort="updated_at">อัปเดตล่าสุด</button></th>
+                <th scope="col">สถานะ</th>
+                <th scope="col">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="scoresBody"><tr><td class="empty" colspan="8">กำลังโหลดข้อมูล…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <p id="resultCount" class="muted"></p>
+          <div class="pager">
+            <label>แถว/หน้า
+              <select id="pageSize">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+              </select>
+            </label>
+            <button id="prevPage" class="button secondary small" type="button">ก่อนหน้า</button>
+            <span id="pageInfo" class="muted"></span>
+            <button id="nextPage" class="button secondary small" type="button">ถัดไป</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- Banned ---------- -->
+      <section id="tab-banned" class="panel table-panel" role="tabpanel" aria-labelledby="bannedTitle" hidden>
+        <div class="table-heading">
+          <div><h2 id="bannedTitle">ผู้เล่นที่ถูกแบน</h2><p class="muted">ผู้เล่นที่ถูกแบนจะส่งคะแนนใหม่ไม่ได้ จนกว่าจะปลดแบน</p></div>
+          <div class="table-tools">
+            <label class="search"><span class="sr-only">ค้นหาชื่อผู้เล่นที่ถูกแบน</span><input id="bannedSearch" type="search" placeholder="ค้นหาชื่อผู้เล่น"></label>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">ชื่อผู้เล่น</th>
+                <th scope="col">คะแนน</th>
+                <th scope="col">เหตุผล</th>
+                <th scope="col">แบนเมื่อ</th>
+                <th scope="col">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="bannedBody"><tr><td class="empty" colspan="5">กำลังโหลดข้อมูล…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------- Audit ---------- -->
+      <section id="tab-audit" class="panel table-panel" role="tabpanel" aria-labelledby="auditTitle" hidden>
+        <div class="table-heading">
+          <div><h2 id="auditTitle">บันทึกกิจกรรม</h2><p class="muted">100 รายการล่าสุด</p></div>
+          <div class="table-tools"><button id="auditRefresh" class="button secondary" type="button">โหลดใหม่</button></div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">เวลา</th>
+                <th scope="col">ผู้ดูแล</th>
+                <th scope="col">การกระทำ</th>
+                <th scope="col">รายละเอียด</th>
+              </tr>
+            </thead>
+            <tbody id="auditBody"><tr><td class="empty" colspan="4">กำลังโหลดข้อมูล…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------- Admins ---------- -->
+      <section id="tab-admins" class="panel table-panel" role="tabpanel" aria-labelledby="adminsTitle" hidden>
+        <div class="table-heading">
+          <div><h2 id="adminsTitle">ผู้ดูแลระบบ</h2><p class="muted">เฉพาะ owner เท่านั้นที่จัดการบัญชีผู้ดูแลได้</p></div>
+          <div class="table-tools"><button id="addAdminButton" class="button primary" type="button">เพิ่มผู้ดูแล</button></div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">ชื่อผู้ใช้</th>
+                <th scope="col">บทบาท</th>
+                <th scope="col">สถานะ</th>
+                <th scope="col">เข้าสู่ระบบล่าสุด</th>
+                <th scope="col">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="adminsBody"><tr><td class="empty" colspan="5">กำลังโหลดข้อมูล…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <!-- ================= Dialogs ================= -->
+  <dialog id="passwordDialog" class="dialog" aria-labelledby="passwordDialogTitle">
+    <form id="passwordForm" novalidate>
+      <h2 id="passwordDialogTitle">เปลี่ยนรหัสผ่าน</h2>
+      <p class="muted">รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร</p>
+      <div class="field-row"><label for="currentPassword">รหัสผ่านปัจจุบัน</label>
+        <div class="password-field">
+          <input id="currentPassword" type="password" autocomplete="current-password" required>
+          <button class="password-toggle" type="button" data-toggle-password="currentPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <div class="field-row"><label for="newPassword">รหัสผ่านใหม่</label>
+        <div class="password-field">
+          <input id="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
+          <button class="password-toggle" type="button" data-toggle-password="newPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <div class="field-row"><label for="confirmPassword">ยืนยันรหัสผ่านใหม่</label>
+        <div class="password-field">
+          <input id="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
+          <button class="password-toggle" type="button" data-toggle-password="confirmPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <div class="field-row"><label for="specialPassword">รหัสผ่านพิเศษ</label>
+        <div class="password-field">
+          <input id="specialPassword" type="password" autocomplete="off" maxlength="64" required>
+          <button class="password-toggle" type="button" data-toggle-password="specialPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div>
+        <small class="muted">ใช้ยืนยันสิทธิ์ในการเปลี่ยนรหัสผ่าน</small></div>
+      <p id="passwordMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="passwordCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button class="button primary" type="submit">บันทึกรหัสผ่าน</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="specialPasswordDialog" class="dialog" aria-labelledby="specialPasswordDialogTitle">
+    <form id="specialPasswordForm" novalidate>
+      <h2 id="specialPasswordDialogTitle">ตั้งรหัสผ่านพิเศษ</h2>
+      <p class="muted">เฉพาะ owner — ใช้ยืนยันการเปลี่ยนรหัสผ่านของแอดมินทุกคน</p>
+      <div class="field-row"><label for="specialCurrentPassword">รหัสผ่านปัจจุบัน</label>
+        <div class="password-field">
+          <input id="specialCurrentPassword" type="password" autocomplete="current-password" required>
+          <button class="password-toggle" type="button" data-toggle-password="specialCurrentPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <div class="field-row"><label for="currentSpecial">รหัสผ่านพิเศษปัจจุบัน</label>
+        <div class="password-field">
+          <input id="currentSpecial" type="password" autocomplete="off" maxlength="64" required>
+          <button class="password-toggle" type="button" data-toggle-password="currentSpecial" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <div class="field-row"><label for="newSpecial">รหัสผ่านพิเศษใหม่</label>
+        <div class="password-field">
+          <input id="newSpecial" type="password" autocomplete="off" minlength="4" maxlength="64" required>
+          <button class="password-toggle" type="button" data-toggle-password="newSpecial" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <div class="field-row"><label for="confirmSpecial">ยืนยันรหัสผ่านพิเศษใหม่</label>
+        <div class="password-field">
+          <input id="confirmSpecial" type="password" autocomplete="off" minlength="4" maxlength="64" required>
+          <button class="password-toggle" type="button" data-toggle-password="confirmSpecial" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <p id="specialPasswordMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="specialPasswordCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button class="button primary" type="submit">บันทึกรหัสพิเศษ</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="renameDialog" class="dialog" aria-labelledby="renameDialogTitle">
+    <form id="renameForm" novalidate>
+      <h2 id="renameDialogTitle">เปลี่ยนชื่อผู้เล่น</h2>
+      <p class="muted">ชื่อต้องยาว 1–16 ตัวอักษร และต้องไม่ซ้ำกับผู้เล่นคนอื่น</p>
+      <div class="field-row"><label for="renameInput">ชื่อใหม่</label>
+        <input id="renameInput" type="text" minlength="1" maxlength="16" required></div>
+      <p id="renameMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="renameCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button class="button primary" type="submit">บันทึกชื่อ</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="banDialog" class="dialog" aria-labelledby="banDialogTitle">
+    <form id="banForm" novalidate>
+      <h2 id="banDialogTitle">แบนผู้เล่น</h2>
+      <p class="muted" id="banTargetText"></p>
+      <div class="field-row"><label for="banReason">เหตุผล (ไม่บังคับ)</label>
+        <textarea id="banReason" rows="3" maxlength="200" placeholder="เช่น ใช้โปรแกรมช่วยเล่น"></textarea></div>
+      <p id="banMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="banCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button class="button danger" type="submit">ยืนยันแบน</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="adminDialog" class="dialog" aria-labelledby="adminDialogTitle">
+    <form id="adminForm" novalidate>
+      <h2 id="adminDialogTitle">เพิ่มผู้ดูแล</h2>
+      <p class="muted">ผู้ดูแลใหม่จะถูกบังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งแรก</p>
+      <div class="field-row"><label for="adminUsername">ชื่อผู้ใช้</label>
+        <input id="adminUsername" type="text" maxlength="64" autocomplete="off" required></div>
+      <div class="field-row"><label for="adminPassword">รหัสผ่านชั่วคราว</label>
+        <div class="password-field">
+          <input id="adminPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+          <button class="password-toggle" type="button" data-toggle-password="adminPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <div class="field-row"><label for="adminRoleSelect">บทบาท</label>
+        <select id="adminRoleSelect">
+          <option value="editor">editor — จัดการคะแนนและแบนได้</option>
+          <option value="viewer">viewer — ดูข้อมูลได้อย่างเดียว</option>
+          <option value="owner">owner — จัดการได้ทุกอย่าง</option>
+        </select></div>
+      <p id="adminMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="adminCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button class="button primary" type="submit">เพิ่มผู้ดูแล</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="resetAdminDialog" class="dialog" aria-labelledby="resetAdminDialogTitle">
+    <form id="resetAdminForm" novalidate>
+      <h2 id="resetAdminDialogTitle">รีเซ็ตรหัสผ่านผู้ดูแล</h2>
+      <p class="muted" id="resetAdminTargetText"></p>
+      <div class="field-row"><label for="resetAdminPassword">รหัสผ่านชั่วคราวใหม่</label>
+        <div class="password-field">
+          <input id="resetAdminPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
+          <button class="password-toggle" type="button" data-toggle-password="resetAdminPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+        </div></div>
+      <p id="resetAdminMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="resetAdminCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button class="button primary" type="submit">รีเซ็ต</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog" class="dialog" aria-labelledby="confirmTitle">
+    <h2 id="confirmTitle">ยืนยันการทำรายการ</h2>
+    <p id="confirmText" class="muted"></p>
+    <div class="dialog-actions">
+      <button id="confirmCancel" class="button secondary" type="button">ยกเลิก</button>
+      <button id="confirmOk" class="button danger" type="button">ยืนยัน</button>
+    </div>
+  </dialog>
+
+  <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
+</body>
+</html>
