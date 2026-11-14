@@ -667,7 +667,9 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
       say2(saved.score>st.score?'คะแนนสูงสุดเดิมของคุณคือ '+saved.score+' เก็บไว้ตามเดิม':hadName?'อัปเดตคะแนนแล้ว ใช้ชื่อเดิม':'บันทึกคะแนนแล้ว รอบต่อไปใช้ชื่อเดิมส่งคะแนนได้');
       try{await refreshLeaderboard()}catch(e){console.warn('Leaderboard refresh failed',e)}
     }catch(e){
-      if(e&&e.code==='invalid_argument'){form.classList.add('hidden');say2('บัญชีนี้ยังส่งคะแนนไม่ได้ ดูอันดับได้อย่างเดียว')}
+      console.error('[wsg] submit_score failed',e);
+      if(e&&/player_banned/.test(String(e.message||''))){say2('บัญชีนี้ถูกระงับการส่งคะแนน ติดต่อผู้ดูแลระบบ')}
+      else if(e&&e.code==='invalid_argument'){form.classList.add('hidden');say2('บัญชีนี้ยังส่งคะแนนไม่ได้ ดูอันดับได้อย่างเดียว')}
       else if(e&&e.code==='23505'){
         nameIn.classList.add('is-duplicate');nameHint.classList.add('is-duplicate');nameIn.setAttribute('aria-invalid','true');nameHint.textContent='ชื่อซ้ำ';say2('ชื่อซ้ำ');
         window.setTimeout(()=>nameIn.focus(),0);
@@ -696,7 +698,11 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
       window.setInterval(()=>{if(document.visibilityState==='visible')refreshLeaderboard().catch(e=>console.warn('Leaderboard refresh failed',e))},15000);
       document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshLeaderboard().catch(e=>console.warn('Leaderboard refresh failed',e))});
     }catch(e){
-      connectionMessage='เชื่อม Supabase ไม่สำเร็จ ตรวจ URL, key และไฟล์ setup.sql';
+      console.error('[wsg] leaderboard init failed',e);
+      const raw=String((e&&e.message)||''),code=String((e&&e.code)||'');
+      connectionMessage=(code==='PGRST202'||code==='PGRST205'||code==='42P01'||/does not exist|schema cache/i.test(raw))
+        ?'ฐานข้อมูลเกมยังไม่พร้อม — กรุณารัน Database/setup.sql ใน Supabase SQL Editor'
+        :'เชื่อม Supabase ไม่สำเร็จ ตรวจ URL, key และไฟล์ setup.sql';
       form.classList.add('hidden');list.textContent='';const li=document.createElement('li');li.className='caption-1 muted py-2 text-center';li.textContent=connectionMessage;list.append(li);renderHome([]);box.classList.remove('hidden');say2(connectionMessage);
     }
   })();
