@@ -185,3 +185,29 @@ begin
   end if;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Admin accounts
+-- ---------------------------------------------------------------------------
+-- ระบบหลังบ้าน (ตาราง admin_users, การ hash รหัสผ่าน, session, audit log,
+-- การแบนผู้เล่น และ RPC ทั้งหมด) ถูกย้ายไปอยู่ที่ Database/admin_system.sql
+-- ให้รันไฟล์นั้นต่อจากไฟล์นี้หนึ่งครั้ง
+--
+-- หมายเหตุ: เวอร์ชันเดิมของไฟล์นี้เคยสร้าง admin_users พร้อมรหัสผ่านแบบ
+-- plaintext และล้างข้อมูลแอดมินทุกครั้งที่รัน ซึ่งทำให้ตั้งรหัสผ่านใหม่ไม่ได้
+-- ตอนนี้ตัดส่วนนั้นออกแล้ว เพื่อไม่ให้ทับรหัสผ่านที่เปลี่ยนไว้แล้ว
+
+-- Read-only score statistics used by the admin dashboard. public.scores is only
+-- read here; no score rows, columns, or policies are modified.
+create or replace function public.admin_private_score_stats()
+returns table (player_count bigint, average_score numeric, highest_score integer)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select count(*)::bigint, coalesce(avg(s.score), 0), coalesce(max(s.score), 0)::integer
+  from public.scores as s;
+$$;
+revoke all on function public.admin_private_score_stats() from public, anon, authenticated;
+grant execute on function public.admin_private_score_stats() to service_role;
