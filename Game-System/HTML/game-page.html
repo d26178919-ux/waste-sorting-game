@@ -10,7 +10,6 @@
 <meta property="og:description" content="ฝึกแยกขยะ 4 สีถัง มีขยะมากกว่า 100 ชนิด เล่นฟรีบนมือถือและคอมพิวเตอร์">
 <meta name="theme-color" content="#000000">
 <!-- External JavaScript dependencies -->
-<script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="../JS/database-config.js"></script>
@@ -19,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- CSS styles -->
-<link rel="stylesheet" href="../CSS/game-styles.css">
+<link rel="stylesheet" href="../CSS/game-styles.css?v=2">
 </head>
 <!-- HTML page structure -->
 <body class="flex flex-col items-center">
@@ -101,7 +100,7 @@
       <div class="text-center"><div class="caption-4 muted">เวลา</div><div id="time" class="heading-6 tnum">60</div></div>
       <div class="flex items-center gap-2">
         <div id="lives" class="flex items-center h-7" aria-label="ชีวิตที่เหลือ"></div>
-        <button id="mute" class="sound-toggle" type="button" aria-label="เปิดเสียง" aria-pressed="true">
+        <button id="mute" class="sound-toggle" type="button" aria-label="เสียงเอฟเฟกต์" aria-pressed="true">
           <span class="sound-label sound-label-off" aria-hidden="true">ปิด</span>
           <span class="sound-label sound-label-on" aria-hidden="true">เปิด</span>
           <span class="sound-knob" aria-hidden="true">
@@ -123,6 +122,7 @@
       <div id="itemArt" aria-hidden="true"></div>
       <div id="name" class="title-3 mt-1"></div>
     </div>
+    <div id="itemAnnounce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
 
   <div class="game-bin-area flex flex-col items-center gap-2 pb-3">
@@ -192,6 +192,6 @@
 </dialog>
 
 <!-- JavaScript game behavior -->
-<script src="../JS/game-logic.js"></script>
+<script src="../JS/game-logic.js?v=2"></script>
 </body>
 </html>
