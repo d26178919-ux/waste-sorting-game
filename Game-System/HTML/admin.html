@@ -6,10 +6,10 @@
   <meta name="robots" content="noindex,nofollow">
   <meta name="theme-color" content="#082016">
   <title>ระบบหลังบ้าน | เกมแยกขยะ</title>
-  <link rel="stylesheet" href="../CSS/admin.css">
+  <link rel="stylesheet" href="../CSS/admin.css?v=3">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="../JS/database-config.js"></script>
-  <script src="../JS/admin.js" defer></script>
+  <script src="../JS/admin.js?v=3" defer></script>
 </head>
 <body>
   <main class="shell">
@@ -29,7 +29,7 @@
         <button class="button primary" type="submit">เข้าสู่ระบบ</button>
       </form>
       <p id="loginMessage" class="message" role="status" aria-live="polite"></p>
-      <p class="login-hint">บัญชีเริ่มต้นคือ <code>admin</code> — ระบบจะเตือนให้เปลี่ยนรหัสผ่านหลังเข้าสู่ระบบ</p>
+      <p class="login-hint">บัญชีผู้ดูแลถูกสร้างโดยเจ้าของระบบ — หากยังไม่มีบัญชี ให้สร้างด้วย SQL ตามคู่มือติดตั้ง</p>
     </section>
 
     <!-- ================= Dashboard ================= -->
@@ -55,7 +55,7 @@
       <p id="dashboardMessage" class="message" role="status" aria-live="polite"></p>
 
       <div id="passwordWarning" class="warning" role="alert" hidden>
-        <span>คุณยังใช้รหัสผ่านเริ่มต้นอยู่ ควรเปลี่ยนก่อนใช้งานจริง</span>
+        <span>คุณยังไม่ได้เปลี่ยนรหัสผ่าน ควรเปลี่ยนก่อนใช้งานจริง</span>
         <button id="passwordWarningBtn" class="link-button" type="button">เปลี่ยนรหัสผ่านเดี๋ยวนี้</button>
       </div>
 
@@ -70,6 +70,7 @@
         <button class="tab" data-tab="scores" role="tab" aria-selected="true" aria-controls="tab-scores">คะแนนผู้เล่น</button>
         <button class="tab" data-tab="banned" role="tab" aria-selected="false" aria-controls="tab-banned">ผู้เล่นที่ถูกแบน</button>
         <button class="tab" data-tab="audit" role="tab" aria-selected="false" aria-controls="tab-audit">บันทึกกิจกรรม</button>
+        <button class="tab" id="commandsTab" data-tab="commands" role="tab" aria-selected="false" aria-controls="tab-commands">คำสั่งจัดการ</button>
         <button class="tab" id="adminsTab" data-tab="admins" role="tab" aria-selected="false" aria-controls="tab-admins" hidden>ผู้ดูแลระบบ</button>
       </nav>
 
@@ -160,6 +161,24 @@
             <tbody id="auditBody"><tr><td class="empty" colspan="4">กำลังโหลดข้อมูล…</td></tr></tbody>
           </table>
         </div>
+      </section>
+
+      <!-- ---------- Commands ---------- -->
+      <section id="tab-commands" class="panel command-panel" role="tabpanel" aria-labelledby="commandsTitle" hidden>
+        <div class="table-heading">
+          <div>
+            <h2 id="commandsTitle">คำสั่งจัดการ</h2>
+            <p class="muted">เลือกคำสั่งตามหมวด — คำสั่งที่บัญชีนี้ไม่มีสิทธิ์จะไม่แสดง</p>
+          </div>
+        </div>
+        <div id="commandGroups" class="command-groups"></div>
+        <section id="commandResult" class="command-result" aria-live="polite" hidden>
+          <div class="command-result-head">
+            <h3 id="commandResultTitle">ผลลัพธ์</h3>
+            <button id="commandResultClose" class="button secondary small" type="button">ปิด</button>
+          </div>
+          <div id="commandResultBody" class="command-result-body"></div>
+        </section>
       </section>
 
       <!-- ---------- Admins ---------- -->
@@ -270,8 +289,8 @@
     <form id="banForm" novalidate>
       <h2 id="banDialogTitle">แบนผู้เล่น</h2>
       <p class="muted" id="banTargetText"></p>
-      <div class="field-row"><label for="banReason">เหตุผล (ไม่บังคับ)</label>
-        <textarea id="banReason" rows="3" maxlength="200" placeholder="เช่น ใช้โปรแกรมช่วยเล่น"></textarea></div>
+      <div class="field-row"><label for="banReason">เหตุผล (3–200 ตัวอักษร)</label>
+        <textarea id="banReason" rows="3" minlength="3" maxlength="200" required placeholder="เช่น ใช้โปรแกรมช่วยเล่น"></textarea></div>
       <p id="banMessage" class="message" role="status" aria-live="polite"></p>
       <div class="dialog-actions">
         <button id="banCancel" class="button secondary" type="button">ยกเลิก</button>
@@ -320,6 +339,68 @@
         <button class="button primary" type="submit">รีเซ็ต</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="playerSearchDialog" class="dialog wide" aria-labelledby="playerSearchTitle">
+    <form id="playerSearchForm" novalidate>
+      <h2 id="playerSearchTitle">ค้นหาผู้เล่น</h2>
+      <p id="playerSearchHint" class="muted">พิมพ์ชื่อหรือ UUID แล้วกดค้นหา</p>
+      <div class="field-row"><label for="playerSearchInput">ชื่อหรือ UUID</label>
+        <input id="playerSearchInput" type="search" maxlength="64" autocomplete="off" required></div>
+      <p id="playerSearchMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="playerSearchCancel" class="button secondary" type="button">ปิด</button>
+        <button class="button primary" type="submit">ค้นหา</button>
+      </div>
+    </form>
+    <div id="playerSearchResults" class="dialog-results"></div>
+  </dialog>
+
+  <dialog id="playerDetailDialog" class="dialog wide" aria-labelledby="playerDetailTitle">
+    <div class="dialog-head">
+      <h2 id="playerDetailTitle">โปรไฟล์ผู้เล่น</h2>
+      <button id="playerDetailClose" class="button secondary small" type="button">ปิด</button>
+    </div>
+    <div id="playerDetailBody" class="dialog-results"></div>
+  </dialog>
+
+  <dialog id="scoreSetDialog" class="dialog" aria-labelledby="scoreSetTitle">
+    <form id="scoreSetForm" novalidate>
+      <h2 id="scoreSetTitle">ตั้งคะแนนใหม่</h2>
+      <p id="scoreTargetText" class="muted"></p>
+      <div class="field-row"><label for="scoreValue">คะแนน (0–1,000,000)</label>
+        <input id="scoreValue" type="number" min="0" max="1000000" step="1" required></div>
+      <div class="field-row"><label for="scoreReason">เหตุผล (3–200 ตัวอักษร)</label>
+        <textarea id="scoreReason" rows="3" maxlength="200" required></textarea></div>
+      <p id="scoreSetMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="scoreSetCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button class="button primary" type="submit">บันทึกคะแนน</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="reasonDialog" class="dialog" aria-labelledby="reasonTitle">
+    <form id="reasonForm" novalidate>
+      <h2 id="reasonTitle">ยืนยันการทำรายการ</h2>
+      <p id="reasonText" class="muted"></p>
+      <div class="field-row"><label for="reasonInput">เหตุผล (3–200 ตัวอักษร)</label>
+        <textarea id="reasonInput" rows="3" maxlength="200" required></textarea></div>
+      <p id="reasonMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="reasonCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button id="reasonSubmit" class="button danger" type="submit">ยืนยัน</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="runDetailDialog" class="dialog wide" aria-labelledby="runDetailTitle">
+    <div class="dialog-head">
+      <h2 id="runDetailTitle">รายละเอียดรอบเกม</h2>
+      <button id="runDetailClose" class="button secondary small" type="button">ปิด</button>
+    </div>
+    <div id="runDetailBody" class="dialog-results"></div>
+    <div id="runDetailActions" class="dialog-actions"></div>
   </dialog>
 
   <dialog id="confirmDialog" class="dialog" aria-labelledby="confirmTitle">
