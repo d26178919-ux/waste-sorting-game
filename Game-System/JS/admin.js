@@ -10,7 +10,7 @@
   const EXPIRES_KEY = 'wsg_admin_expires_at';
   const SESSION_WARN_MS = 15 * 60 * 1000;
   const $ = (id) => document.getElementById(id);
-  const TABS = ['scores', 'banned', 'audit', 'admins'];
+  const TABS = ['scores', 'banned', 'audit', 'commands', 'admins'];
 
   const ROLE_LABELS = { owner: 'owner', editor: 'editor', viewer: 'viewer' };
 
@@ -19,6 +19,7 @@
     invalid_credentials: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
     too_many_attempts: 'พยายามเข้าสู่ระบบผิดหลายครั้ง กรุณารอ 15 นาทีแล้วลองใหม่',
     invalid_session: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่',
+    password_change_required: 'ต้องเปลี่ยนรหัสผ่านก่อนใช้งานส่วนอื่น',
     forbidden: 'บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้',
     weak_password: 'รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร',
     same_password: 'รหัสผ่านใหม่ต้องต่างจากรหัสเดิม',
@@ -26,14 +27,27 @@
     invalid_special_password: 'รหัสผ่านพิเศษไม่ถูกต้อง',
     weak_special_password: 'รหัสผ่านพิเศษต้องยาว 4–64 ตัวอักษร',
     same_special_password: 'รหัสผ่านพิเศษใหม่ต้องต่างจากเดิม',
-    special_password_not_configured: 'ยังไม่ได้ตั้งรหัสผ่านพิเศษ — กรุณารัน Database/admin_system.sql ใหม่',
+    special_password_not_configured: 'ยังไม่ได้ตั้งรหัสผ่านพิเศษ — ผู้ดูแลต้องตั้งค่าในฐานข้อมูลก่อน',
     duplicate_player_name: 'ชื่อผู้เล่นนี้ถูกใช้แล้ว',
     duplicate_admin: 'ชื่อผู้ใช้นี้มีอยู่แล้ว',
     invalid_name: 'ชื่อต้องยาว 1–16 ตัวอักษร',
     invalid_role: 'บทบาทไม่ถูกต้อง',
+    invalid_reason: 'กรุณากรอกเหตุผล 3–200 ตัวอักษร',
+    invalid_score: 'คะแนนต้องเป็นจำนวนเต็ม 0–1,000,000',
+    invalid_status: 'สถานะรอบเกมไม่ถูกต้อง',
+    invalid_action: 'คำสั่งตรวจสอบรอบเกมไม่ถูกต้อง',
+    invalid_session_id: 'รหัสเซสชันไม่ถูกต้อง',
     player_not_found: 'ไม่พบผู้เล่นนี้ (อาจถูกลบไปแล้ว)',
     admin_not_found: 'ไม่พบผู้ใช้แอดมินนี้',
     ban_not_found: 'ผู้เล่นนี้ไม่ได้ถูกแบน',
+    player_banned: 'ผู้เล่นนี้ถูกแบน — ต้องปลดแบนก่อน',
+    run_not_found: 'ไม่พบรอบเกมนี้',
+    run_not_suspicious: 'รอบนี้ไม่ได้ถูก flag อยู่',
+    run_not_active: 'รอบนี้ไม่ได้กำลังเล่นอยู่',
+    run_not_finished: 'ต้องปิดรอบเกมก่อนจึงจะอนุมัติได้',
+    player_name_missing: 'ไม่พบชื่อผู้เล่นสำหรับบันทึกคะแนน',
+    session_not_found: 'ไม่พบเซสชันนี้ (อาจหมดอายุแล้ว)',
+    cannot_revoke_self: 'ตัดเซสชันที่กำลังใช้งานอยู่ไม่ได้',
     cannot_disable_self: 'ปิดใช้งานบัญชีของตัวเองไม่ได้',
     last_owner: 'ต้องมี owner ที่ใช้งานอยู่อย่างน้อย 1 คน',
     not_connected: 'ยังเชื่อมต่อฐานข้อมูลไม่สำเร็จ'
@@ -43,9 +57,15 @@
     login: 'เข้าสู่ระบบ',
     delete_score: 'ลบคะแนน',
     reset_score: 'รีเซ็ตคะแนน',
+    score_set: 'ตั้งคะแนนใหม่',
     rename_player: 'เปลี่ยนชื่อผู้เล่น',
     ban_player: 'แบนผู้เล่น',
     unban_player: 'ปลดแบนผู้เล่น',
+    run_approve: 'อนุมัติรอบเกม',
+    run_reject: 'ยืนยันว่าเป็นบอท',
+    run_flag: 'ตั้ง flag รอบเกม',
+    run_terminate: 'ยกเลิกรอบเกม',
+    revoke_session: 'ตัดเซสชัน',
     change_password: 'เปลี่ยนรหัสผ่าน',
     set_special_password: 'ตั้งรหัสผ่านพิเศษ',
     add_admin: 'เพิ่มผู้ดูแล',
@@ -53,6 +73,40 @@
     disable_admin: 'ปิดใช้งานผู้ดูแล',
     reset_admin_password: 'รีเซ็ตรหัสผ่านผู้ดูแล'
   };
+
+  const COMMAND_GROUPS = [
+    { id: 'players', title: 'ผู้เล่น', hint: 'ค้นหา ดูโปรไฟล์ และเปลี่ยนชื่อผู้เล่น' },
+    { id: 'scores', title: 'คะแนน', hint: 'ตั้ง รีเซ็ต หรือลบคะแนนผู้เล่น' },
+    { id: 'moderation', title: 'แบน / ปลดแบน', hint: 'จัดการผู้เล่นที่ละเมิดกติกา' },
+    { id: 'runs', title: 'ตรวจสอบรอบเกม', hint: 'ตรวจ anti-bot และจัดการรอบที่ผิดปกติ' },
+    { id: 'security', title: 'ความปลอดภัย', hint: 'จัดการเซสชันของผู้ดูแลระบบ' },
+    { id: 'system', title: 'ระบบ', hint: 'ภาพรวมสถิติของเกม' }
+  ];
+
+  const COMMANDS = [
+    { id: 'player.search', group: 'players', roles: ['owner', 'editor', 'viewer'], label: 'ค้นหาผู้เล่น', hint: 'ค้นจากชื่อหรือ UUID' },
+    { id: 'player.detail', group: 'players', roles: ['owner', 'editor', 'viewer'], label: 'ดูโปรไฟล์ / ประวัติ', hint: 'คะแนน อันดับ สถานะแบน และรอบล่าสุด' },
+    { id: 'player.rename', group: 'players', roles: ['owner', 'editor'], label: 'เปลี่ยนชื่อผู้เล่น', hint: 'แก้ชื่อที่แสดงบนอันดับ' },
+
+    { id: 'score.set', group: 'scores', roles: ['owner'], label: 'ตั้งคะแนนใหม่', hint: 'กำหนดคะแนนเองพร้อมเหตุผล' },
+    { id: 'score.reset', group: 'scores', roles: ['owner', 'editor'], label: 'รีเซ็ตคะแนน', hint: 'ตั้งคะแนนและสถิติเป็น 0' },
+    { id: 'score.delete', group: 'scores', roles: ['owner', 'editor'], label: 'ลบคะแนน', hint: 'ลบผู้เล่นออกจากอันดับถาวร' },
+
+    { id: 'player.ban', group: 'moderation', roles: ['owner', 'editor'], label: 'แบนผู้เล่น', hint: 'บล็อกการเล่นและการส่งคะแนน' },
+    { id: 'player.unban', group: 'moderation', roles: ['owner', 'editor'], label: 'ปลดแบนผู้เล่น', hint: 'คืนสิทธิ์ให้ผู้เล่น' },
+
+    { id: 'run.flagged', group: 'runs', roles: ['owner', 'editor', 'viewer'], label: 'รอบที่ถูก flag', hint: 'รายการรอบที่ anti-bot สงสัย' },
+    { id: 'run.search', group: 'runs', roles: ['owner', 'editor', 'viewer'], label: 'ค้นหารอบตามผู้เล่น', hint: 'ดูประวัติรอบทั้งหมดของผู้เล่น' },
+    { id: 'run.approve', group: 'runs', roles: ['owner', 'editor'], label: 'อนุมัติรอบ', hint: 'ล้าง flag โดยไม่บันทึกคะแนน' },
+    { id: 'run.save', group: 'runs', roles: ['owner'], label: 'อนุมัติ + บันทึกคะแนน', hint: 'owner เท่านั้น — บันทึกคะแนนจากรอบที่ตรวจแล้ว' },
+    { id: 'run.reject', group: 'runs', roles: ['owner', 'editor'], label: 'ยืนยันว่าเป็นบอท', hint: 'คงสถานะ flag และไม่บันทึกคะแนน' },
+    { id: 'run.flag', group: 'runs', roles: ['owner', 'editor'], label: 'ตั้ง flag ด้วยมือ', hint: 'ทำเครื่องหมายรอบที่สงสัย' },
+    { id: 'run.terminate', group: 'runs', roles: ['owner', 'editor'], label: 'ยกเลิกรอบที่กำลังเล่น', hint: 'ปิดรอบ active ทันที' },
+
+    { id: 'sessions.manage', group: 'security', roles: ['owner'], label: 'จัดการเซสชัน', hint: 'ดูและตัดเซสชันของผู้ดูแล' },
+
+    { id: 'system.stats', group: 'system', roles: ['owner', 'editor', 'viewer'], label: 'สถิติระบบ', hint: 'ผู้เล่น รอบเกม และจำนวนที่ถูก flag' }
+  ];
 
   const state = {
     db: null,
@@ -73,6 +127,17 @@
     renameTarget: null,
     banTarget: null,
     resetAdminTarget: null,
+    playerPickMode: 'player.detail',
+    playerSearchRows: [],
+    scoreTarget: null,
+    reasonResolve: null,
+    runTarget: null,
+    runListStatus: 'suspicious',
+    runListPlayer: null,
+    runListPage: 0,
+    runListTitle: '',
+    runListTotal: 0,
+    sessions: [],
     expiresAt: null,
     sessionWarned: false,
     sessionWarnTimer: null,
@@ -240,6 +305,14 @@
       handleLoginFailure(err);
       return;
     }
+    const raw = String((err && (err.message || err.error_description)) || '');
+    if (raw.includes('password_change_required')) {
+      if (state.admin) state.admin.must_change_password = true;
+      setPasswordDialogMode();
+      if (target) setMessage(target, MESSAGES.password_change_required, 'error');
+      openPasswordDialog();
+      return;
+    }
     const text = errorMessage(err);
     if (target) setMessage(target, text, 'error');
     toast(text, true);
@@ -317,6 +390,46 @@
     return emptyRow(colspan, 'กำลังโหลดข้อมูล…');
   }
 
+  function can(roles) {
+    return !!(state.admin && roles.includes(state.admin.role));
+  }
+
+  function make(tag, className = '', text = '') {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== '') el.textContent = text;
+    return el;
+  }
+
+  function pillEl(text, modifier = '') {
+    return make('span', `pill ${modifier}`.trim(), text);
+  }
+
+  function detailItem(label, value) {
+    const wrap = make('div', 'result-item');
+    wrap.append(make('span', 'result-label', label));
+    wrap.append(make('span', 'result-value', textOf(value)));
+    return wrap;
+  }
+
+  function runStatusLabel(status) {
+    return {
+      active: 'กำลังเล่น',
+      finished: 'จบแล้ว',
+      abandoned: 'ถูกยกเลิก'
+    }[status] || status || '—';
+  }
+
+  function playerLabel(row) {
+    return (row && (row.name || row.player_name)) || 'ผู้เล่น';
+  }
+
+  function refreshPlayerTables() {
+    if (state.tab === 'scores') return loadScores();
+    if (state.tab === 'banned') return loadBanned();
+    return Promise.resolve();
+  }
+
   /* ------------------------------------------------------------------ */
   /* screens                                                             */
   /* ------------------------------------------------------------------ */
@@ -347,6 +460,7 @@
     $('adminsTab').hidden = current.role !== 'owner';
     $('specialPasswordButton').hidden = current.role !== 'owner';
     $('passwordWarning').hidden = !current.must_change_password;
+    renderCommands();
   }
 
   function applyStats(stats) {
@@ -363,6 +477,10 @@
 
   function switchTab(tab) {
     if (!TABS.includes(tab)) return;
+    if (tab === 'commands' && $('commandsTab').hidden) {
+      if (state.tab === 'commands') tab = 'scores';
+      else return;
+    }
     state.tab = tab;
     document.querySelectorAll('.tab').forEach((btn) => {
       btn.setAttribute('aria-selected', String(btn.dataset.tab === tab));
@@ -371,7 +489,703 @@
     if (tab === 'scores') return loadScores();
     if (tab === 'banned') return loadBanned();
     if (tab === 'audit') return loadAudit();
+    if (tab === 'commands') { renderCommands(); return; }
     if (tab === 'admins') return loadAdmins();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* command center                                                      */
+  /* ------------------------------------------------------------------ */
+
+  function renderCommands() {
+    const host = $('commandGroups');
+    if (!host) return;
+
+    host.textContent = '';
+    const groups = COMMAND_GROUPS
+      .map((group) => ({
+        ...group,
+        commands: COMMANDS.filter((cmd) => cmd.group === group.id && can(cmd.roles))
+      }))
+      .filter((group) => group.commands.length > 0);
+
+    groups.forEach((group) => {
+      const section = make('section', 'command-group');
+      section.append(make('h3', '', group.title));
+      section.append(make('p', '', group.hint));
+      const grid = make('div', 'command-grid');
+      group.commands.forEach((cmd) => {
+        const button = make('button', 'command-card');
+        button.type = 'button';
+        button.dataset.command = cmd.id;
+        button.append(make('strong', '', cmd.label));
+        button.append(make('span', '', cmd.hint));
+        grid.append(button);
+      });
+      section.append(grid);
+      host.append(section);
+    });
+
+    $('commandsTab').hidden = groups.length === 0;
+    if (!groups.length && state.tab === 'commands') switchTab('scores');
+  }
+
+  function runCommand(id) {
+    const command = COMMANDS.find((item) => item.id === id);
+    if (!command || !can(command.roles)) {
+      toast(MESSAGES.forbidden, true);
+      return;
+    }
+
+    switch (id) {
+      case 'player.search':
+        return openPlayerPicker('player.detail', 'ค้นหาผู้เล่น', 'พิมพ์ชื่อหรือ UUID แล้วกดค้นหา');
+      case 'player.detail':
+        return openPlayerPicker('player.detail', 'ดูโปรไฟล์ผู้เล่น', 'เลือกผู้เล่นที่ต้องการดูข้อมูล');
+      case 'player.rename':
+        return openPlayerPicker('player.rename', 'เปลี่ยนชื่อผู้เล่น', 'เลือกผู้เล่นที่ต้องการเปลี่ยนชื่อ');
+      case 'score.set':
+        return openPlayerPicker('score.set', 'ตั้งคะแนนใหม่', 'เลือกผู้เล่นที่ต้องการกำหนดคะแนน');
+      case 'score.reset':
+        return openPlayerPicker('score.reset', 'รีเซ็ตคะแนน', 'เลือกผู้เล่นที่ต้องการรีเซ็ต');
+      case 'score.delete':
+        return openPlayerPicker('score.delete', 'ลบคะแนน', 'เลือกผู้เล่นที่ต้องการลบออกจากอันดับ');
+      case 'player.ban':
+        return openPlayerPicker('player.ban', 'แบนผู้เล่น', 'เลือกผู้เล่นที่ต้องการแบน');
+      case 'player.unban':
+        return openPlayerPicker('player.unban', 'ปลดแบนผู้เล่น', 'เลือกผู้เล่นที่ต้องการปลดแบน');
+      case 'run.flagged':
+        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'รอบที่ถูก flag' });
+      case 'run.search':
+        return openPlayerPicker('runs.player', 'ค้นหารอบตามผู้เล่น', 'เลือกผู้เล่นเพื่อดูรอบเกมทั้งหมด');
+      case 'run.approve':
+        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'เลือกรอบเพื่ออนุมัติ' });
+      case 'run.save':
+        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'เลือกรอบเพื่ออนุมัติและบันทึกคะแนน' });
+      case 'run.reject':
+        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'เลือกรอบเพื่อยืนยันว่าเป็นบอท' });
+      case 'run.flag':
+        return loadRuns({ status: 'all', player: null, page: 0, title: 'เลือกรอบเพื่อตั้ง flag' });
+      case 'run.terminate':
+        return loadRuns({ status: 'active', player: null, page: 0, title: 'รอบที่กำลังเล่น' });
+      case 'sessions.manage':
+        return loadSessions();
+      case 'system.stats':
+        return loadSystemStats();
+      default:
+        return undefined;
+    }
+  }
+
+  function openPlayerPicker(mode, title, hint) {
+    state.playerPickMode = mode;
+    state.playerSearchRows = [];
+    $('playerSearchForm').reset();
+    $('playerSearchResults').textContent = '';
+    $('playerSearchTitle').textContent = title;
+    $('playerSearchHint').textContent = hint;
+    setMessage($('playerSearchMessage'), '');
+    openDialog($('playerSearchDialog'));
+    $('playerSearchInput').focus();
+  }
+
+  async function onPlayerSearch(event) {
+    event.preventDefault();
+    const query = $('playerSearchInput').value.trim();
+    setMessage($('playerSearchMessage'), 'กำลังค้นหา…', 'info');
+    try {
+      const data = await rpc('admin_player_search', {
+        p_token: state.token,
+        p_query: query,
+        p_limit: 20,
+        p_offset: 0
+      });
+      state.playerSearchRows = Array.isArray(data && data.rows) ? data.rows : [];
+      renderPlayerSearchResults();
+      setMessage(
+        $('playerSearchMessage'),
+        state.playerSearchRows.length ? `พบ ${fmtNumber(data && data.total)} รายการ` : 'ไม่พบผู้เล่นที่ตรงกับคำค้น',
+        state.playerSearchRows.length ? 'success' : 'error'
+      );
+    } catch (err) {
+      state.playerSearchRows = [];
+      $('playerSearchResults').textContent = '';
+      fail(err, $('playerSearchMessage'));
+    }
+  }
+
+  function renderPlayerSearchResults() {
+    const host = $('playerSearchResults');
+    host.textContent = '';
+    if (!state.playerSearchRows.length) {
+      host.append(make('p', 'result-empty', 'ยังไม่มีผลลัพธ์'));
+      return;
+    }
+
+    state.playerSearchRows.forEach((row) => {
+      const card = make('div', 'result-card');
+      const head = make('div', 'result-card-head');
+      const title = make('div');
+      title.append(make('strong', '', row.name));
+      title.append(make('div', 'result-label', String(row.user_id).slice(0, 8)));
+      head.append(title);
+      head.append(pillEl(row.is_banned ? 'ถูกแบน' : 'ปกติ', row.is_banned ? 'danger' : 'ok'));
+
+      const grid = make('div', 'result-grid');
+      grid.append(detailItem('คะแนน', fmtNumber(row.score)));
+      grid.append(detailItem('ตอบถูก', fmtNumber(row.right_count)));
+      grid.append(detailItem('คอมโบสูงสุด', fmtNumber(row.max_combo)));
+      grid.append(detailItem('อัปเดตล่าสุด', fmtDate(row.updated_at)));
+
+      const actions = make('div', 'result-actions');
+      const pick = make('button', 'button primary small', 'เลือก');
+      pick.type = 'button';
+      pick.dataset.pickUser = row.user_id;
+      actions.append(pick);
+
+      card.append(head, grid, actions);
+      host.append(card);
+    });
+  }
+
+  async function handlePlayerPicked(row) {
+    if (!row) return;
+    const mode = state.playerPickMode;
+    closeDialog($('playerSearchDialog'));
+
+    if (mode === 'player.detail') return openPlayerDetail(row.user_id);
+    if (mode === 'player.rename') return openRenameDialog(row.user_id, row.name);
+    if (mode === 'player.ban') return openBanDialog(row.user_id, row.name);
+    if (mode === 'player.unban') return unbanPlayer(row);
+    if (mode === 'score.set') return openScoreSetDialog(row);
+    if (mode === 'score.reset') return resetScore(row);
+    if (mode === 'score.delete') return deleteScore(row);
+    if (mode === 'runs.player') {
+      return loadRuns({ status: 'all', player: row.user_id, page: 0, title: `รอบของ ${row.name}` });
+    }
+    return undefined;
+  }
+
+  async function openPlayerDetail(userId) {
+    try {
+      const data = await rpc('admin_player_detail', { p_token: state.token, p_user_id: userId });
+      renderPlayerDetail(data);
+      openDialog($('playerDetailDialog'));
+    } catch (err) {
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  function renderPlayerDetail(data) {
+    $('playerDetailTitle').textContent = data.name || 'โปรไฟล์ผู้เล่น';
+    const body = $('playerDetailBody');
+    body.textContent = '';
+
+    const card = make('div', 'result-card');
+    const grid = make('div', 'result-grid');
+    grid.append(detailItem('ชื่อ', data.name));
+    grid.append(detailItem('UUID', data.user_id));
+    grid.append(detailItem('คะแนน', fmtNumber(data.score)));
+    grid.append(detailItem('อันดับ', `#${fmtNumber(data.rank)}`));
+    grid.append(detailItem('ตอบถูก', fmtNumber(data.right_count)));
+    grid.append(detailItem('คอมโบสูงสุด', fmtNumber(data.max_combo)));
+    grid.append(detailItem('สถานะ', data.is_banned ? 'ถูกแบน' : 'ปกติ'));
+    grid.append(detailItem('เหตุผลที่แบน', data.ban_reason));
+    grid.append(detailItem('รอบทั้งหมด', fmtNumber(data.run_count)));
+    grid.append(detailItem('รอบที่ถูก flag', fmtNumber(data.flagged_count)));
+    grid.append(detailItem('เล่นล่าสุด', fmtDate(data.last_played_at)));
+    grid.append(detailItem('อัปเดตคะแนน', fmtDate(data.updated_at)));
+
+    const actions = make('div', 'result-actions');
+    const add = (label, className, handler) => {
+      const button = make('button', `button ${className || 'secondary'} small`, label);
+      button.type = 'button';
+      button.addEventListener('click', handler);
+      actions.append(button);
+    };
+
+    add('ดูรอบเกม', 'secondary', () => {
+      closeDialog($('playerDetailDialog'));
+      loadRuns({ status: 'all', player: data.user_id, page: 0, title: `รอบของ ${data.name}` });
+    });
+    if (can(['owner', 'editor'])) {
+      add('เปลี่ยนชื่อ', 'secondary', () => {
+        closeDialog($('playerDetailDialog'));
+        openRenameDialog(data.user_id, data.name);
+      });
+      if (data.is_banned) {
+        add('ปลดแบน', 'secondary', () => unbanPlayer(data));
+      } else {
+        add('แบน', 'danger', () => {
+          closeDialog($('playerDetailDialog'));
+          openBanDialog(data.user_id, data.name);
+        });
+      }
+      add('รีเซ็ตคะแนน', 'secondary', () => resetScore(data));
+      add('ลบคะแนน', 'danger', () => deleteScore(data));
+    }
+    if (can(['owner'])) {
+      add('ตั้งคะแนนใหม่', 'primary', () => openScoreSetDialog(data));
+    }
+
+    card.append(grid, actions);
+    body.append(card);
+
+    if (Array.isArray(data.recent_runs) && data.recent_runs.length) {
+      body.append(make('h3', '', 'รอบล่าสุด'));
+      const list = make('ul', 'mini-list');
+      data.recent_runs.forEach((run) => {
+        const item = make('li');
+        item.append(make('strong', '', `${fmtNumber(run.score)} คะแนน`));
+        item.append(document.createTextNode(
+          ` — ${runStatusLabel(run.status)} — ตอบ ${fmtNumber(run.answered)} ข้อ — ${fmtDate(run.finished_at || run.started_at)}`
+        ));
+        if (run.suspicious) item.append(pillEl('flagged', 'warn'));
+        list.append(item);
+      });
+      body.append(list);
+    }
+  }
+
+  function openScoreSetDialog(row) {
+    state.scoreTarget = row;
+    $('scoreSetForm').reset();
+    $('scoreValue').value = String(Number(row.score || 0));
+    $('scoreTargetText').textContent = `ผู้เล่น: ${row.name} — คะแนนปัจจุบัน ${fmtNumber(row.score)}`;
+    setMessage($('scoreSetMessage'), '');
+    openDialog($('scoreSetDialog'));
+    $('scoreValue').focus();
+    $('scoreValue').select();
+  }
+
+  async function onScoreSet(event) {
+    event.preventDefault();
+    const target = state.scoreTarget;
+    if (!target) return;
+    const score = Number($('scoreValue').value);
+    const reason = $('scoreReason').value.trim();
+    if (!Number.isInteger(score) || score < 0 || score > 1000000) {
+      setMessage($('scoreSetMessage'), MESSAGES.invalid_score, 'error');
+      return;
+    }
+    if (reason.length < 3 || reason.length > 200) {
+      setMessage($('scoreSetMessage'), MESSAGES.invalid_reason, 'error');
+      return;
+    }
+    const button = $('scoreSetForm').querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      await rpc('admin_set_score', {
+        p_token: state.token,
+        p_user_id: target.user_id,
+        p_score: score,
+        p_reason: reason
+      });
+      closeDialog($('scoreSetDialog'));
+      state.scoreTarget = null;
+      toast('ตั้งคะแนนใหม่แล้ว');
+      await refreshPlayerTables();
+    } catch (err) {
+      fail(err, $('scoreSetMessage'));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function promptReason({ title, text, okLabel = 'ยืนยัน', danger = true }) {
+    return new Promise((resolve) => {
+      state.reasonResolve = resolve;
+      $('reasonTitle').textContent = title;
+      $('reasonText').textContent = text;
+      $('reasonSubmit').textContent = okLabel;
+      $('reasonSubmit').className = `button ${danger ? 'danger' : 'primary'}`;
+      $('reasonForm').reset();
+      setMessage($('reasonMessage'), '');
+      openDialog($('reasonDialog'));
+      $('reasonInput').focus();
+    });
+  }
+
+  function settleReason(value) {
+    const resolve = state.reasonResolve;
+    state.reasonResolve = null;
+    closeDialog($('reasonDialog'));
+    if (resolve) resolve(value);
+  }
+
+  function onReasonSubmit(event) {
+    event.preventDefault();
+    const reason = $('reasonInput').value.trim();
+    if (reason.length < 3 || reason.length > 200) {
+      setMessage($('reasonMessage'), MESSAGES.invalid_reason, 'error');
+      return;
+    }
+    settleReason(reason);
+  }
+
+  async function resetScore(row) {
+    const reason = await promptReason({
+      title: 'รีเซ็ตคะแนน',
+      text: `ตั้งคะแนนและสถิติของ ${playerLabel(row)} เป็น 0`,
+      okLabel: 'รีเซ็ต'
+    });
+    if (!reason) return;
+    try {
+      await rpc('admin_reset_score', { p_token: state.token, p_user_id: row.user_id, p_reason: reason });
+      toast('รีเซ็ตคะแนนแล้ว');
+      await refreshPlayerTables();
+    } catch (err) {
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  async function deleteScore(row) {
+    const reason = await promptReason({
+      title: 'ลบคะแนน',
+      text: `ลบ ${playerLabel(row)} ออกจากอันดับถาวร`,
+      okLabel: 'ลบ'
+    });
+    if (!reason) return;
+    try {
+      await rpc('admin_delete_score', { p_token: state.token, p_user_id: row.user_id, p_reason: reason });
+      toast('ลบคะแนนแล้ว');
+      await refreshPlayerTables();
+    } catch (err) {
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  async function unbanPlayer(row) {
+    const ok = await confirmAction('ปลดแบนผู้เล่น', `ปลดแบน ${playerLabel(row)} ใช่หรือไม่?`, 'ปลดแบน');
+    if (!ok) return;
+    try {
+      await rpc('admin_unban_player', { p_token: state.token, p_user_id: row.user_id });
+      toast('ปลดแบนแล้ว');
+      await refreshPlayerTables();
+    } catch (err) {
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  function showCommandResult(title) {
+    $('commandResultTitle').textContent = title || 'ผลลัพธ์';
+    $('commandResultBody').textContent = '';
+    $('commandResult').hidden = false;
+    $('commandResult').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function closeCommandResult() {
+    $('commandResult').hidden = true;
+    $('commandResultBody').textContent = '';
+    state.runListTotal = 0;
+  }
+
+  async function loadRuns({ status = 'all', player = null, page = 0, title = 'รายการรอบเกม' } = {}) {
+    state.runListStatus = status;
+    state.runListPlayer = player;
+    state.runListPage = page;
+    state.runListTitle = title;
+    showCommandResult(title);
+    const body = $('commandResultBody');
+    body.append(make('p', 'result-empty', 'กำลังโหลดข้อมูล…'));
+
+    try {
+      const data = await rpc('admin_runs_list', {
+        p_token: state.token,
+        p_status: status,
+        p_player: player,
+        p_limit: 20,
+        p_offset: page * 20
+      });
+      state.runListTotal = Number((data && data.total) || 0);
+      body.textContent = '';
+      renderRuns(Array.isArray(data && data.rows) ? data.rows : []);
+    } catch (err) {
+      body.textContent = '';
+      body.append(make('p', 'result-empty', errorMessage(err)));
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  function addRunAction(container, action, label, runId, modifier = '') {
+    const button = make('button', `button ${modifier || 'secondary'} small`, label);
+    button.type = 'button';
+    button.dataset.runAction = action;
+    button.dataset.runId = runId;
+    container.append(button);
+  }
+
+  function runActionButtons(run, inDialog) {
+    const wrap = make('div', 'result-actions');
+
+    if (!inDialog) {
+      const detail = make('button', 'button secondary small', 'รายละเอียด');
+      detail.type = 'button';
+      detail.dataset.runOpen = run.id;
+      wrap.append(detail);
+    }
+
+    if (can(['owner', 'editor'])) {
+      if (run.status === 'active') {
+        addRunAction(wrap, 'terminate', 'ยกเลิกรอบ', run.id, 'danger');
+      } else if (run.suspicious) {
+        addRunAction(wrap, 'approve', 'อนุมัติ (ไม่บันทึก)', run.id);
+        if (can(['owner'])) addRunAction(wrap, 'approve-save', 'อนุมัติ + บันทึกคะแนน', run.id, 'primary');
+        addRunAction(wrap, 'reject', 'ยืนยันว่าเป็นบอท', run.id, 'danger');
+      } else if (run.status === 'finished') {
+        addRunAction(wrap, 'flag', 'ตั้ง flag', run.id);
+      }
+    }
+
+    return wrap;
+  }
+
+  function renderRuns(rows) {
+    const body = $('commandResultBody');
+    if (!rows.length) {
+      body.append(make('p', 'result-empty', 'ไม่พบรอบเกมที่ตรงเงื่อนไข'));
+      return;
+    }
+
+    rows.forEach((run) => {
+      const card = make('div', 'result-card');
+      const head = make('div', 'result-card-head');
+      const title = make('div');
+      title.append(make('strong', '', run.player_name));
+      title.append(make('div', 'result-label', String(run.id).slice(0, 8)));
+      head.append(title);
+
+      const badges = make('div', 'result-actions');
+      badges.append(pillEl(runStatusLabel(run.status), run.status === 'active' ? 'info' : ''));
+      if (run.suspicious) badges.append(pillEl('flagged', 'warn'));
+      head.append(badges);
+
+      const grid = make('div', 'result-grid');
+      grid.append(detailItem('คะแนน', fmtNumber(run.score)));
+      grid.append(detailItem('ตอบ', fmtNumber(run.answered)));
+      grid.append(detailItem('ตอบถูก', fmtNumber(run.right_count)));
+      grid.append(detailItem('คอมโบสูงสุด', fmtNumber(run.max_combo)));
+      grid.append(detailItem('เฉลี่ยต่อข้อ', run.mean_delta_ms === null ? '—' : `${fmtNumber(run.mean_delta_ms)} ms`));
+      grid.append(detailItem('ส่วนเบี่ยงเบน', run.sd_delta_ms === null ? '—' : `${fmtNumber(run.sd_delta_ms)} ms`));
+      grid.append(detailItem('เริ่ม', fmtDate(run.started_at)));
+      grid.append(detailItem('จบ', fmtDate(run.finished_at)));
+      if (run.suspicious && run.flag_reason) grid.append(detailItem('เหตุผล flag', run.flag_reason));
+
+      card.append(head, grid, runActionButtons(run, false));
+      body.append(card);
+    });
+
+    const pages = Math.max(1, Math.ceil(state.runListTotal / 20));
+    const pager = make('div', 'result-pager');
+    pager.append(make('span', '', `แสดง ${fmtNumber(rows.length)} จาก ${fmtNumber(state.runListTotal)} รอบ — หน้า ${state.runListPage + 1} / ${pages}`));
+    const nav = make('div', 'result-actions');
+    const prev = make('button', 'button secondary small', 'ก่อนหน้า');
+    prev.type = 'button';
+    prev.dataset.runPage = String(state.runListPage - 1);
+    prev.disabled = state.runListPage <= 0;
+    const next = make('button', 'button secondary small', 'ถัดไป');
+    next.type = 'button';
+    next.dataset.runPage = String(state.runListPage + 1);
+    next.disabled = state.runListPage >= pages - 1;
+    nav.append(prev, next);
+    pager.append(nav);
+    body.append(pager);
+  }
+
+  async function openRunDetail(runId) {
+    try {
+      const data = await rpc('admin_run_detail', { p_token: state.token, p_run_id: runId });
+      state.runTarget = data;
+      $('runDetailTitle').textContent = `รอบของ ${data.player_name}`;
+      const body = $('runDetailBody');
+      body.textContent = '';
+      const card = make('div', 'result-card');
+      const grid = make('div', 'result-grid');
+      grid.append(detailItem('สถานะ', runStatusLabel(data.status)));
+      grid.append(detailItem('ถูก flag', data.suspicious ? 'ใช่' : 'ไม่'));
+      grid.append(detailItem('เหตุผล flag', data.flag_reason));
+      grid.append(detailItem('คะแนน', fmtNumber(data.score)));
+      grid.append(detailItem('ตอบ', fmtNumber(data.answered)));
+      grid.append(detailItem('ตอบถูก', fmtNumber(data.right_count)));
+      grid.append(detailItem('คอมโบสูงสุด', fmtNumber(data.max_combo)));
+      grid.append(detailItem('เฉลี่ยต่อข้อ', data.mean_delta_ms === null ? '—' : `${fmtNumber(data.mean_delta_ms)} ms`));
+      grid.append(detailItem('ส่วนเบี่ยงเบน', data.sd_delta_ms === null ? '—' : `${fmtNumber(data.sd_delta_ms)} ms`));
+      grid.append(detailItem('เวลาตอบเร็วสุด', data.min_delta === null ? '—' : `${fmtNumber(data.min_delta)} ms`));
+      grid.append(detailItem('เวลาตอบช้าสุด', data.max_delta === null ? '—' : `${fmtNumber(data.max_delta)} ms`));
+      grid.append(detailItem('จำนวนข้อ', fmtNumber(data.items_count)));
+      grid.append(detailItem('เริ่ม', fmtDate(data.started_at)));
+      grid.append(detailItem('จบ', fmtDate(data.finished_at)));
+      card.append(grid);
+      body.append(card);
+      $('runDetailActions').replaceChildren(runActionButtons(data, true));
+      openDialog($('runDetailDialog'));
+    } catch (err) {
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  async function handleRunAction(action, runId) {
+    const configs = {
+      approve: { title: 'อนุมัติรอบเกม', text: 'ล้าง flag ของรอบนี้โดยไม่บันทึกคะแนน', okLabel: 'อนุมัติ', review: 'approve', save: false, danger: false, success: 'อนุมัติรอบแล้ว' },
+      'approve-save': { title: 'อนุมัติและบันทึกคะแนน', text: 'ล้าง flag และบันทึกคะแนนจากรอบนี้เข้าอันดับ', okLabel: 'อนุมัติ + บันทึก', review: 'approve', save: true, danger: false, success: 'อนุมัติและบันทึกคะแนนแล้ว' },
+      reject: { title: 'ยืนยันว่าเป็นบอท', text: 'คงสถานะ flag และไม่บันทึกคะแนนจากรอบนี้', okLabel: 'ยืนยันว่าเป็นบอท', review: 'reject', save: false, danger: true, success: 'ยืนยันว่าเป็นบอทแล้ว' },
+      flag: { title: 'ตั้ง flag ด้วยมือ', text: 'ทำเครื่องหมายรอบนี้ว่าสงสัยและไม่บันทึกคะแนน', okLabel: 'ตั้ง flag', review: 'flag', save: false, danger: true, success: 'ตั้ง flag แล้ว' },
+      terminate: { title: 'ยกเลิกรอบเกม', text: 'ปิดรอบที่กำลังเล่นทันทีและไม่บันทึกคะแนน', okLabel: 'ยกเลิกรอบ', review: 'terminate', save: false, danger: true, success: 'ยกเลิกรอบแล้ว' }
+    };
+    const config = configs[action];
+    if (!config) return;
+
+    const reason = await promptReason({
+      title: config.title,
+      text: config.text,
+      okLabel: config.okLabel,
+      danger: config.danger
+    });
+    if (!reason) return;
+
+    try {
+      await rpc('admin_run_review', {
+        p_token: state.token,
+        p_run_id: runId,
+        p_action: config.review,
+        p_note: reason,
+        p_save_score: config.save
+      });
+      closeDialog($('runDetailDialog'));
+      toast(config.success);
+      await loadRuns({
+        status: state.runListStatus,
+        player: state.runListPlayer,
+        page: state.runListPage,
+        title: state.runListTitle
+      });
+    } catch (err) {
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  async function loadSessions() {
+    showCommandResult('เซสชันที่ใช้งาน');
+    const body = $('commandResultBody');
+    body.append(make('p', 'result-empty', 'กำลังโหลดข้อมูล…'));
+    try {
+      const rows = await rpc('admin_sessions_list', { p_token: state.token });
+      state.sessions = Array.isArray(rows) ? rows : [];
+      body.textContent = '';
+      renderSessions();
+    } catch (err) {
+      body.textContent = '';
+      body.append(make('p', 'result-empty', errorMessage(err)));
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  function renderSessions() {
+    const body = $('commandResultBody');
+    if (!state.sessions.length) {
+      body.append(make('p', 'result-empty', 'ไม่มีเซสชันที่ใช้งานอยู่'));
+      return;
+    }
+
+    state.sessions.forEach((session) => {
+      const card = make('div', 'result-card');
+      const head = make('div', 'result-card-head');
+      const title = make('div');
+      title.append(make('strong', '', session.username));
+      title.append(make('div', 'result-label', `${session.role} — ${String(session.token_hash).slice(0, 12)}…`));
+      head.append(title);
+      if (session.is_current) head.append(pillEl('เซสชันนี้', 'ok'));
+
+      const grid = make('div', 'result-grid');
+      grid.append(detailItem('เข้าสู่ระบบ', fmtDate(session.created_at)));
+      grid.append(detailItem('ใช้งานล่าสุด', fmtDate(session.last_seen_at)));
+      grid.append(detailItem('หมดอายุ', fmtDate(session.expires_at)));
+      card.append(head, grid);
+
+      if (!session.is_current) {
+        const actions = make('div', 'result-actions');
+        const revoke = make('button', 'button danger small', 'ตัดเซสชัน');
+        revoke.type = 'button';
+        revoke.dataset.sessionRevoke = session.token_hash;
+        revoke.dataset.sessionName = session.username;
+        actions.append(revoke);
+        card.append(actions);
+      }
+
+      body.append(card);
+    });
+  }
+
+  async function revokeSession(hash, username) {
+    const ok = await confirmAction('ตัดเซสชัน', `ตัดเซสชันของ ${username} ใช่หรือไม่?`, 'ตัดเซสชัน');
+    if (!ok) return;
+    try {
+      await rpc('admin_revoke_session', { p_token: state.token, p_session_hash: hash });
+      toast(`ตัดเซสชันของ ${username} แล้ว`);
+      await loadSessions();
+    } catch (err) {
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  async function loadSystemStats() {
+    showCommandResult('สถิติระบบ');
+    const body = $('commandResultBody');
+    body.append(make('p', 'result-empty', 'กำลังโหลดข้อมูล…'));
+    try {
+      const data = await rpc('admin_stats', { p_token: state.token });
+      body.textContent = '';
+      const card = make('div', 'result-card');
+      const grid = make('div', 'result-grid');
+      grid.append(detailItem('ผู้เล่นทั้งหมด', fmtNumber(data.player_count)));
+      grid.append(detailItem('คะแนนเฉลี่ย', fmtNumber(data.average_score)));
+      grid.append(detailItem('คะแนนสูงสุด', fmtNumber(data.highest_score)));
+      grid.append(detailItem('ผู้เล่นที่ถูกแบน', fmtNumber(data.banned_count)));
+      grid.append(detailItem('ผู้ดูแลที่ใช้งาน', fmtNumber(data.admin_count)));
+      grid.append(detailItem('รอบทั้งหมด', fmtNumber(data.total_runs)));
+      grid.append(detailItem('รอบวันนี้', fmtNumber(data.runs_today)));
+      grid.append(detailItem('รอบที่กำลังเล่น', fmtNumber(data.active_runs)));
+      grid.append(detailItem('รอบที่จบแล้ว', fmtNumber(data.finished_runs)));
+      grid.append(detailItem('รอบที่ถูก flag', fmtNumber(data.flagged_runs)));
+      grid.append(detailItem('flag วันนี้', fmtNumber(data.flagged_today)));
+      grid.append(detailItem('เวลาเล่นเฉลี่ย', `${fmtNumber(data.avg_run_seconds)} วินาที`));
+      card.append(grid);
+      body.append(card);
+    } catch (err) {
+      body.textContent = '';
+      body.append(make('p', 'result-empty', errorMessage(err)));
+      fail(err, $('dashboardMessage'));
+    }
+  }
+
+  function handleCommandResultClick(event) {
+    const open = event.target.closest('button[data-run-open]');
+    if (open) {
+      openRunDetail(open.dataset.runOpen);
+      return;
+    }
+
+    const action = event.target.closest('button[data-run-action]');
+    if (action) {
+      handleRunAction(action.dataset.runAction, action.dataset.runId);
+      return;
+    }
+
+    const page = event.target.closest('button[data-run-page]');
+    if (page && !page.disabled) {
+      loadRuns({
+        status: state.runListStatus,
+        player: state.runListPlayer,
+        page: Math.max(0, Number(page.dataset.runPage) || 0),
+        title: state.runListTitle
+      });
+      return;
+    }
+
+    const revoke = event.target.closest('button[data-session-revoke]');
+    if (revoke) {
+      revokeSession(revoke.dataset.sessionRevoke, revoke.dataset.sessionName);
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -488,23 +1302,11 @@
     }
 
     if (action === 'reset') {
-      const ok = await confirmAction('รีเซ็ตคะแนน', `ตั้งคะแนนของ ${name || 'ผู้เล่นนี้'} เป็น 0 และล้างสถิติ ใช่หรือไม่?`, 'รีเซ็ต');
-      if (!ok) return;
-      return runAction(
-        () => rpc('admin_reset_score', { p_token: state.token, p_user_id: userId }),
-        'รีเซ็ตคะแนนแล้ว',
-        state.tab === 'banned' ? loadBanned : loadScores
-      );
+      return resetScore({ user_id: userId, name });
     }
 
     if (action === 'delete') {
-      const ok = await confirmAction('ลบคะแนน', `ลบคะแนนของ ${name || 'ผู้เล่นนี้'} ออกจากอันดับถาวร ใช่หรือไม่?`, 'ลบ');
-      if (!ok) return;
-      return runAction(
-        () => rpc('admin_delete_score', { p_token: state.token, p_user_id: userId }),
-        'ลบคะแนนแล้ว',
-        state.tab === 'banned' ? loadBanned : loadScores
-      );
+      return deleteScore({ user_id: userId, name });
     }
   }
 
@@ -836,6 +1638,42 @@
     $('adminCancel').addEventListener('click', () => closeDialog($('adminDialog')));
     $('resetAdminCancel').addEventListener('click', () => closeDialog($('resetAdminDialog')));
 
+    $('commandGroups').addEventListener('click', (event) => {
+      const card = event.target.closest('button[data-command]');
+      if (card) runCommand(card.dataset.command);
+    });
+    $('commandResultClose').addEventListener('click', closeCommandResult);
+    $('commandResult').addEventListener('click', handleCommandResultClick);
+
+    $('playerSearchForm').addEventListener('submit', onPlayerSearch);
+    $('playerSearchCancel').addEventListener('click', () => closeDialog($('playerSearchDialog')));
+    $('playerSearchResults').addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-pick-user]');
+      if (!button) return;
+      const row = state.playerSearchRows.find((item) => String(item.user_id) === button.dataset.pickUser);
+      if (row) handlePlayerPicked(row);
+    });
+    $('playerDetailClose').addEventListener('click', () => closeDialog($('playerDetailDialog')));
+
+    $('scoreSetForm').addEventListener('submit', onScoreSet);
+    $('scoreSetCancel').addEventListener('click', () => {
+      state.scoreTarget = null;
+      closeDialog($('scoreSetDialog'));
+    });
+
+    $('reasonForm').addEventListener('submit', onReasonSubmit);
+    $('reasonCancel').addEventListener('click', () => settleReason(null));
+    $('reasonDialog').addEventListener('cancel', (event) => {
+      event.preventDefault();
+      settleReason(null);
+    });
+
+    $('runDetailClose').addEventListener('click', () => closeDialog($('runDetailDialog')));
+    $('runDetailActions').addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-run-action]');
+      if (button) handleRunAction(button.dataset.runAction, button.dataset.runId);
+    });
+
     $('passwordDialog').addEventListener('cancel', (event) => {
       if (state.admin && state.admin.must_change_password) event.preventDefault();
     });
@@ -943,6 +1781,7 @@
       setPasswordDialogMode();
       closeDialog($('passwordDialog'));
       $('passwordWarning').hidden = true;
+      setMessage($('dashboardMessage'), '');
       toast('เปลี่ยนรหัสผ่านแล้ว');
     } catch (err) {
       fail(err, $('passwordMessage'));
@@ -1007,7 +1846,8 @@
       closeDialog($('renameDialog'));
       toast('เปลี่ยนชื่อผู้เล่นแล้ว');
       state.renameTarget = null;
-      await (state.tab === 'banned' ? loadBanned() : loadScores());
+      if (state.tab === 'banned') await loadBanned();
+      else if (state.tab === 'scores') await loadScores();
     } catch (err) {
       fail(err, $('renameMessage'));
     } finally {
@@ -1017,18 +1857,24 @@
 
   async function onBan(event) {
     event.preventDefault();
+    const reason = $('banReason').value.trim();
+    if (reason.length < 3 || reason.length > 200) {
+      setMessage($('banMessage'), MESSAGES.invalid_reason, 'error');
+      $('banReason').focus();
+      return;
+    }
     const button = $('banForm').querySelector('button[type="submit"]');
     button.disabled = true;
     try {
       await rpc('admin_ban_player', {
         p_token: state.token,
         p_user_id: state.banTarget,
-        p_reason: $('banReason').value.trim() || null
+        p_reason: reason
       });
       closeDialog($('banDialog'));
       toast('แบนผู้เล่นแล้ว');
       state.banTarget = null;
-      await (state.tab === 'banned' ? loadBanned() : loadScores());
+      await refreshPlayerTables();
     } catch (err) {
       fail(err, $('banMessage'));
     } finally {
