@@ -16,36 +16,7 @@ class SoundEngine{
 }
 const sound=new SoundEngine();
 
-const ITEMS=[
-  ['เปลือกแอปเปิล','green'],['เปลือกกล้วย','green'],['เศษอาหาร','green'],['เศษผัก','green'],['เปลือกไข่','green'],['เปลือกแตงโม','green'],
-  ['เปลือกส้ม','green'],['เปลือกมะม่วง','green'],['เปลือกสับปะรด','green'],['เปลือกมะพร้าว','green'],['ข้าวเหลือ','green'],['เส้นก๋วยเตี๋ยว','green'],
-  ['ขนมปังเก่า','green'],['ก้างปลา','green'],['กระดูกหมู','green'],['กระดูกไก่','green'],['เปลือกกุ้ง','green'],['เปลือกปู','green'],
-  ['ซังข้าวโพด','green'],['เปลือกข้าวโพด','green'],['เปลือกหัวหอม','green'],['เปลือกกระเทียม','green'],['เปลือกมันฝรั่ง','green'],['เปลือกแครอท','green'],
-  ['เศษแตงกวา','green'],['เศษผักสลัด','green'],['เมล็ดผลไม้','green'],['ก้านองุ่น','green'],['แกนผลไม้','green'],['เปลือกอะโวคาโด','green'],
-  ['กากกาแฟ','green'],['ใบชา','green'],['กากถั่วเหลือง','green'],['เศษเต้าหู้','green'],['ดอกไม้เหี่ยว','green'],['ใบไม้แห้ง','green'],
-  ['เศษหญ้า','green'],['กิ่งไม้','green'],
-  ['ขวดแก้ว','yellow'],['ขวดซอสแก้ว','yellow'],['โหลแก้ว','yellow'],['กระป๋องอะลูมิเนียม','yellow'],['กระป๋องเหล็ก','yellow'],['หนังสือพิมพ์','yellow'],
-  ['กล่องกระดาษ','yellow'],['ขวดพลาสติก PET','yellow'],['ขวดน้ำ PET','yellow'],['ขวดแชมพู','yellow'],['ขวดน้ำยาซักผ้า','yellow'],['ขวดนมพลาสติก','yellow'],
-  ['กล่องอาหารพลาสติก','yellow'],['ถาดพลาสติก','yellow'],['ลังพลาสติก','yellow'],['ถังพลาสติก','yellow'],['ฝาขวดพลาสติก','yellow'],['กระดาษสำนักงาน','yellow'],
-  ['นิตยสาร','yellow'],['หนังสือเก่า','yellow'],['สมุดเก่า','yellow'],['ถุงกระดาษ','yellow'],['กล่องเครื่องดื่ม UHT','yellow'],['กล่องน้ำผลไม้','yellow'],
-  ['แกนทิชชู่','yellow'],['กล่องไข่กระดาษ','yellow'],['ซองจดหมาย','yellow'],['แผ่นพับโฆษณา','yellow'],['กระป๋องกาแฟ','yellow'],['กระป๋องเครื่องดื่ม','yellow'],
-  ['ฝาโลหะ','yellow'],['ช้อนโลหะ','yellow'],['ลวดโลหะ','yellow'],['หม้อโลหะเก่า','yellow'],['ถาดอะลูมิเนียม','yellow'],['ขวดน้ำมันพืช','yellow'],
-  ['ขวดน้ำอัดลม PET','yellow'],['กล่องกระดาษลูกฟูก','yellow'],
-  ['ถุงขนม','blue'],['ทิชชู่ใช้แล้ว','blue'],['กล่องโฟม','blue'],['แปรงสีฟัน','blue'],['ถุงเท้าเก่า','blue'],['ห่อลูกอม','blue'],
-  ['หลอดพลาสติก','blue'],['แก้วพลาสติกใช้แล้ว','blue'],['จานพลาสติกใช้แล้ว','blue'],['ช้อนส้อมพลาสติก','blue'],['ถุงพลาสติก','blue'],['ซองเครื่องดื่ม','blue'],
-  ['ซองบะหมี่','blue'],['ซองเครื่องปรุง','blue'],['ซองขนม','blue'],['ฟองน้ำเก่า','blue'],['ไม้กวาดเก่า','blue'],['มีดโกนพลาสติก','blue'],
-  ['ไหมขัดฟันใช้แล้ว','blue'],['ซองเติมผลิตภัณฑ์','blue'],['พลาสติกห่อเปื้อน','blue'],['กล่องพิซซ่าเปื้อน','blue'],['กล่องอาหารเปื้อน','blue'],['แก้วกระดาษ','blue'],
-  ['ฝาแก้วใช้แล้ว','blue'],['กระดาษเปื้อนอาหาร','blue'],['ซองสบู่เปล่า','blue'],['กระดาษห่อเคลือบ','blue'],['เศษกระจกแตก','blue'],['ถ้วยเซรามิกแตก','blue'],
-  ['จานชามแตก','blue'],['กระถางแตก','blue'],['ตุ๊กตาเก่า','blue'],['รองเท้าเก่า','blue'],['กระเป๋าเก่า','blue'],['ปากกาหมึกหมด','blue'],
-  ['แฟ้มพลาสติก','blue'],
-  ['ถ่านไฟฉาย','red'],['หลอดไฟ','red'],['ยาหมดอายุ','red'],['โทรศัพท์เสีย','red'],['สารเคมี','red'],
-  ['แบตเตอรี่ก้อน','red'],['แบตลิเธียม','red'],['แบตโน้ตบุ๊ก','red'],['สายชาร์จชำรุด','red'],['หูฟังเสีย','red'],['เมาส์เสีย','red'],
-  ['คีย์บอร์ดเสีย','red'],['จอเสีย','red'],['เครื่องคิดเลขเสีย','red'],['กล้องเสีย','red'],['นาฬิกาดิจิทัลเสีย','red'],['ถังดับเพลิงเก่า','red'],
-  ['กระป๋องสเปรย์','red'],['ภาชนะน้ำมันเครื่อง','red'],['ขวดน้ำยาทำความสะอาด','red'],['ขวดน้ำยาฆ่าเชื้อ','red'],['น้ำยาล้างห้องน้ำ','red'],['กระป๋องสี','red'],
-  ['ทินเนอร์','red'],['น้ำมันเครื่องใช้แล้ว','red'],['น้ำยาฆ่าแมลง','red'],['กระป๋องยาฆ่าแมลง','red'],['ขวดน้ำยาฟอกขาว','red'],['ปรอทวัดไข้','red'],
-  ['เข็มฉีดยาใช้แล้ว','red'],['กระบอกฉีดยาใช้แล้ว','red'],['ชุดตรวจใช้แล้ว','red'],['ขวดยาใช้แล้ว','red'],['ขวดน้ำยาล้างเล็บ','red'],['น้ำยาล้างเล็บ','red'],
-  ['ถ่านกระดุม','red'],['พาวเวอร์แบงก์เก่า','red']
-];
+
 const WASTE_ART={
   apple:'<path fill="var(--a)" d="M60 28c-9-9-24-3-29 9-7 17 4 39 15 43 6 2 9-2 14-2s9 4 15 2c11-4 22-26 15-43-5-12-20-18-29-9-3 3-3 3-6 0Z"/><path fill="var(--b)" d="M61 25c-1-8 2-14 8-18 1 7-1 13-8 18Z"/><path fill="var(--c)" d="M62 23c7-8 15-8 21-4-7 6-14 7-21 4Z"/><path d="M54 43c-4 7-4 15-1 20" fill="none" stroke="#fff" stroke-width="4" opacity=".65"/>',
   banana:'<path fill="var(--a)" d="M25 23c9 20 20 34 36 42 13 6 25 4 36-4 2 12-4 20-17 23-23 4-48-13-60-42-5-12-7-21-3-24 2-2 5 0 8 5Z"/><path fill="var(--b)" d="m21 19 11-5 6 12-11 5Zm72 40 11 2-3 10-12-3Z"/><path d="M37 39c11 16 24 26 39 29" fill="none" stroke="#fff" stroke-width="3" opacity=".7"/>',
@@ -228,47 +199,19 @@ function renderWasteArt(name){
 }
 const BIN_TH={green:'ถังเขียว',yellow:'ถังเหลือง',blue:'ถังฟ้า',red:'ถังแดง'};
 const $=id=>document.getElementById(id);
-let st,cur,selected=false,timer,bag=[],recentBins=[];
+let st,cur,selected=false,timer,nextTimer=0,dbClient=null,starting=false;
 let best=0;try{best=+localStorage.getItem('wsg_best')||0}catch(e){}
 
 function show(id){document.body.classList.toggle('game-over',id==='end');['start','game','end'].forEach(x=>{const e=$(x);e.classList.add('hidden');e.classList.remove('flex')});$(id).classList.remove('hidden');if(id!=='start')$(id).classList.add('flex')}
-function shuffleItems(items){
-  for(let i=items.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    [items[i],items[j]]=[items[j],items[i]];
-  }
-}
-function refillBag(){
-  const byBin={green:[],yellow:[],blue:[],red:[]};
-  for(const item of ITEMS)byBin[item[1]].push(item);
-  Object.values(byBin).forEach(shuffleItems);
-  const order=[];
-  const previous=recentBins.slice(-2);
-  while(true){
-    const activeBins=Object.keys(byBin).filter(bin=>byBin[bin].length);
-    if(!activeBins.length)break;
-    shuffleItems(activeBins);
-    if(previous.length===2&&previous[0]===previous[1]&&activeBins[0]===previous[1]){
-      const alternative=activeBins.findIndex(bin=>bin!==previous[1]);
-      if(alternative<0)throw new Error('Cannot avoid three consecutive items from the same bin.');
-      [activeBins[0],activeBins[alternative]]=[activeBins[alternative],activeBins[0]];
-    }
-    for(const bin of activeBins){
-      if(previous.length===2&&previous[0]===previous[1]&&bin===previous[1]){
-        throw new Error('Cannot avoid three consecutive items from the same bin.');
-      }
-      order.push(byBin[bin].pop());
-      previous.push(bin);
-      if(previous.length>2)previous.shift();
-    }
-  }
-  bag=order;
-}
+/* Server sends only the item name; the item -> bin mapping stays server-side. */
 function next(){
-  if(!bag.length)refillBag();
-  cur=bag.shift();recentBins.push(cur[1]);if(recentBins.length>2)recentBins.shift();selected=false;if(st)st.answering=false;$('game').classList.remove('armed');
+  if(!st||st.over)return;
+  if(!st.nextItem){end();return}
+  cur=st.nextItem;
+  selected=false;st.answering=false;$('game').classList.remove('armed');
   const el=$('item');el.classList.remove('pop','sel','shake');void el.offsetWidth;el.classList.add('pop');
-  $('itemArt').innerHTML=renderWasteArt(cur[0]);$('name').textContent=cur[0];
+  $('itemArt').innerHTML=renderWasteArt(cur);$('name').textContent=cur;
+  const announce=$('itemAnnounce');if(announce)announce.textContent='ถัดไป: '+cur;
 }
 const spinningCounters=new WeakMap();
 const REEL_STEP=50*Math.PI/180,REEL_ENTER_MS=120,REEL_FADE_END=1.8,REEL_LAND_AT=.6,REEL_ARRIVE_AT=.29,REEL_CLEAR_MS=200;
@@ -384,33 +327,94 @@ function hud(){setSpinningCounter($('score'),st.score);$('time').textContent=st.
 function flash(bin,ok){const el=document.querySelector('.bin[data-bin="'+bin+'"]');if(!el)return;el.classList.remove('ok','no');void el.offsetWidth;el.classList.add(ok?'ok':'no');setTimeout(()=>el.classList.remove('ok','no'),500)}
 function say(t,c){const m=$('msg');m.textContent=t;m.style.color=c}
 function celebrate(options){if(typeof window.confetti==='function')window.confetti(options)}
-function drop(bin){
-  if(!st||st.over||st.answering)return;
+async function drop(bin){
+  if(!st||st.over||st.answering||!st.runId||!dbClient)return;
   st.answering=true;
-  flash(bin,bin===cur[1]);$('game').classList.remove('armed');if(bin===cur[1]){
-    st.combo++;st.right++;st.maxCombo=Math.max(st.maxCombo,st.combo);
-    st.score+=10+Math.min(st.combo-1,5)*2;
-    if(st.combo>0&&st.combo%5===0){sound.playCombo();celebrate({disableForReducedMotion:true,particleCount:80,spread:70,origin:{y:.7}})}else sound.playCorrect();
-    say('ถูกต้อง '+cur[0]+' ทิ้งใน'+BIN_TH[bin],'var(--ok)');
-  }else{
-    st.combo=0;st.lives--;st.brokenLives.push(st.lives);st.lostLife=st.lives;sound.playWrong();
-    $('item').classList.add('shake');
-    say('ผิดถัง '+cur[0]+' ต้องทิ้งใน'+BIN_TH[cur[1]],'var(--bad)');
+  $('game').classList.remove('armed');
+  try{
+    const {data,error}=await dbClient.rpc('game_answer',{p_run_id:st.runId,p_bin:bin});
+    if(error)throw error;
+    if(!data||data.ok!==true)throw new Error('game_answer_failed');
+    st.score=data.score;st.combo=data.combo;st.maxCombo=data.max_combo;
+    st.right=data.right_count;st.lives=data.lives;st.answered=data.answered;st.nextItem=data.next_item;
+    if(typeof data.time_left==='number')st.time=Math.max(0,Math.min(60,data.time_left));
+    if(typeof data.correct==='boolean'){
+      flash(bin,data.correct);
+      if(data.correct){
+        if(data.combo>0&&data.combo%5===0){sound.playCombo();celebrate({disableForReducedMotion:true,particleCount:80,spread:70,origin:{y:.7}})}else sound.playCorrect();
+        say('ถูกต้อง '+(cur||'')+' ทิ้งใน'+BIN_TH[bin],'var(--ok)');
+      }else{
+        st.brokenLives.push(data.lives);st.lostLife=data.lives;sound.playWrong();
+        $('item').classList.add('shake');
+        say('ผิดถัง '+(cur||'')+' ต้องทิ้งใน'+(BIN_TH[data.expected_bin]||''),'var(--bad)');
+      }
+      hud();
+    }
+    if(data.ended){end();return}
+    clearTimeout(nextTimer);
+    nextTimer=setTimeout(()=>{nextTimer=0;if(!st.over)next()},450);
+  }catch(e){
+    st.answering=false;
+    const raw=String((e&&e.message)||'');
+    if(raw.includes('answers_too_fast'))return;
+    if(raw.includes('invalid_run')){end();return}
+    if(raw.includes('game_items_not_seeded')){say('ยังไม่ได้เติมรายการขยะในฐานข้อมูล — รัน Database/server_scoring.sql ใหม่','var(--bad)');return}
+    if(raw.includes('player_banned')){say('บัญชีนี้ถูกระงับการเล่น','var(--bad)');end();return}
+    if(raw.includes('game_answer')||raw.includes('PGRST202')||/does not exist|schema cache/i.test(raw)){
+      say('ยังไม่ได้ติดตั้ง server scoring — รัน Database/server_scoring.sql','var(--bad)');return;
+    }
+    console.error('[wsg] game_answer failed',e);
+    say('ส่งคำตอบไม่สำเร็จ ลองอีกครั้ง','var(--bad)');
   }
-  hud();
-  if(st.lives<=0){end();return}
-  setTimeout(()=>{if(!st.over)next()},450);
 }
-function start(){
+async function start(){
+  if(starting)return;
+  starting=true;
+  clearTimeout(nextTimer);nextTimer=0;clearInterval(timer);
   sound.init();
-  st={score:0,time:60,lives:3,combo:0,maxCombo:0,right:0,brokenLives:[],lostLife:null,over:false,answering:false};bag=[];recentBins=[];
+  st={runId:null,nextItem:null,answered:0,score:0,time:60,lives:3,combo:0,maxCombo:0,right:0,brokenLives:[],lostLife:null,over:false,answering:false,endsAt:Date.now()+60000};
+  cur=null;
   ['finalScore','finalRight','finalCombo','best'].forEach(id=>setSpinningCounter($(id),0));
-  show('game');say('','');hud();next();
-  clearInterval(timer);
-  timer=setInterval(()=>{st.time--;hud();if(st.time<=0)end()},1000);
+  show('game');say('กำลังเริ่มรอบใหม่…','');hud();
+  try{
+    if(!dbClient){const connection=await window.supabaseReady;dbClient=connection&&connection.client}
+    if(!dbClient)throw new Error('database_not_ready');
+    const {data,error}=await dbClient.rpc('game_start');
+    if(error)throw error;
+    if(!data||data.ok!==true||!data.run_id)throw new Error('game_start_failed');
+    const ends=Date.parse(data.ends_at);
+    st.runId=data.run_id;
+    st.total=data.total;
+    st.nextItem=data.first_item;
+    if(typeof data.lives==='number')st.lives=data.lives;
+    st.endsAt=Number.isFinite(ends)?ends:Date.now()+60000;
+    st.time=Math.max(0,Math.min(60,Math.ceil((st.endsAt-Date.now())/1000)));
+    starting=false;
+    say('','');hud();next();
+    timer=setInterval(()=>{
+      if(!st||st.over)return;
+      const left=Math.max(0,Math.min(60,Math.ceil((st.endsAt-Date.now())/1000)));
+      if(left!==st.time){st.time=left;hud()}
+      if(left<=0)end();
+    },250);
+  }catch(e){
+    starting=false;
+    console.error('[wsg] game_start failed',e);
+    const raw=String((e&&e.message)||'');
+    let msg='เริ่มเกมไม่สำเร็จ ลองใหม่อีกครั้ง';
+    if(raw.includes('player_banned'))msg='บัญชีนี้ถูกระงับการเล่น';
+    else if(raw.includes('rate_limited'))msg='เริ่มรอบถี่เกินไป (จำกัด 30 รอบ/ชั่วโมง) รอสักครู่แล้วลองใหม่';
+    else if(raw.includes('too_many_requests'))msg='เพิ่งเริ่มรอบไปหมาด ๆ รอ 3 วินาทีแล้วลองใหม่';
+    else if(raw.includes('game_items_not_seeded'))msg='ยังไม่ได้เติมรายการขยะในฐานข้อมูล — รัน Database/server_scoring.sql ใหม่';
+    else if(raw.includes('database_not_ready'))msg='ยังเชื่อมต่อฐานข้อมูลไม่ได้';
+    else if(raw.includes('game_start')||raw.includes('PGRST202')||/does not exist|schema cache/i.test(raw))msg='ยังไม่ได้ติดตั้ง server scoring — รัน Database/server_scoring.sql';
+    show('start');
+    const btn=$('startBtn');
+    if(btn){const original=btn.textContent;btn.textContent=msg;window.setTimeout(()=>{btn.textContent=original},4000)}
+  }
 }
 function end(){
-  if(st.over)return;st.over=true;clearInterval(timer);sound.playEnd();
+  if(!st||st.over)return;st.over=true;clearInterval(timer);clearTimeout(nextTimer);nextTimer=0;sound.playEnd();
   if(st.score>best){best=st.score;try{localStorage.setItem('wsg_best',best)}catch(e){}}
   setSpinningCounter($('finalScore'),st.score);setSpinningCounter($('finalRight'),st.right);setSpinningCounter($('finalCombo'),st.maxCombo);setSpinningCounter($('best'),best);
   $('endTier').textContent=st.score>=200?'ยอดเยี่ยม':st.score>=100?'ฝีมือดี':'ยังพัฒนาได้อีก';
@@ -450,8 +454,6 @@ float grain=fract(sin(dot(uv,vec2(12.9898,78.233))*1.0)*43758.5453+u_time);col+=
   const hex=h=>{h=h.replace('#','');return[0,2,4].map(i=>parseInt(h.slice(i,i+2),16)/255)};
   const COLORS=['#86efac','#4ade80','#059669','#000000'],SPEED=2.0,GRAIN=0.3;
   const flat=new Float32Array(COLORS.flatMap(hex));
-  const resize=()=>{const d=Math.min(window.devicePixelRatio||1,2);cv.width=innerWidth*d;cv.height=innerHeight*d;gl.viewport(0,0,cv.width,cv.height)};
-  resize();addEventListener('resize',resize);
   const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
   const draw=t=>{
     if(!$('start').classList.contains('hidden')){
@@ -461,6 +463,8 @@ float grain=fract(sin(dot(uv,vec2(12.9898,78.233))*1.0)*43758.5453+u_time);col+=
     }
     if(!still)requestAnimationFrame(draw);
   };
+  const resize=()=>{const d=Math.min(window.devicePixelRatio||1,2);cv.width=innerWidth*d;cv.height=innerHeight*d;gl.viewport(0,0,cv.width,cv.height);if(still)requestAnimationFrame(()=>draw(performance.now()))};
+  resize();addEventListener('resize',resize);
   requestAnimationFrame(draw);
 })();
 
@@ -495,7 +499,7 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
   let swapT=0,box=null,oc=null;
   function build(){
     if(!active)return '';
-    const b=BINS.find(x=>x.id===active),it=ITEMS.filter(x=>x[1]===b.id);
+    const b=BINS.find(x=>x.id===active);
     return '<div class="flex items-center justify-between gap-3"><span class="obadge" style="background:'+b.c+';color:'+b.t+'">ถังที่ '+b.n+'</span></div>'
       +'<div class="title-3 mt-3">'+b.title+'</div>'
       +'<p class="body-6 text-white/80 mt-1">'+b.info+'</p>';
@@ -565,7 +569,7 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
   const homeList=$('homeLbList');
   const againButton=$('again');
   const moreButton=$('homeLbMore'),moreDialog=$('lbMoreDialog'),moreClose=$('lbMoreClose'),moreList=$('lbMoreList'),myRank=$('lbMyRank');
-  let db=null,uid=null,ready=false,busy=false,nameLocked=false,scoreSent=false,pendingName='',latestRows=[],moreClosing=false,connectionMessage='กำลังเชื่อม Supabase',leaderboardRequest=0;
+  let db=null,uid=null,ready=false,busy=false,nameLocked=false,scoreSent=false,scoreBlocked=false,pendingName='',latestRows=[],moreClosing=false,connectionMessage='กำลังเชื่อม Supabase',leaderboardRequest=0;
   const defaultNameHint=nameHint.textContent;
   try{nameIn.value=localStorage.getItem('wsg_name')||''}catch(e){}
   function say2(t){msg.textContent=t}
@@ -576,9 +580,9 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
     nameLocked=true;nameIn.value=name;nameIn.readOnly=true;nameEntry.classList.add('is-hidden');
   }
   function updateSave(){
-    save.disabled=busy||scoreSent||!ready||!st||st.score<=0;
+    save.disabled=busy||scoreSent||scoreBlocked||!ready||!st||!st.runId||st.score<=0;
     againButton.disabled=busy;
-    save.textContent=scoreSent?'ส่งแล้ว':st&&st.score>0?'ส่งคะแนน '+st.score:'ยังไม่มีคะแนนให้ส่ง';
+    save.textContent=scoreSent?'ส่งแล้ว':scoreBlocked?'รอบนี้ไม่บันทึกคะแนน':st&&st.score>0?'ส่งคะแนน '+st.score:'ยังไม่มีคะแนนให้ส่ง';
   }
   function renderHome(rows){
     homeList.textContent='';
@@ -644,7 +648,7 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
   moreClose.onclick=closeMoreDialog;
   moreDialog.addEventListener('cancel',event=>{event.preventDefault();closeMoreDialog()});
   moreDialog.addEventListener('click',event=>{if(event.target===moreDialog)closeMoreDialog()});
-  window.lbReset=function(){busy=false;scoreSent=false;say2(ready&&nameLocked?'ใช้ชื่อเดิมส่งคะแนนได้ตามปกติ':connectionMessage);updateSave()};
+  window.lbReset=function(){busy=false;scoreSent=false;scoreBlocked=false;say2(ready&&nameLocked?'ใช้ชื่อเดิมส่งคะแนนได้ตามปกติ':connectionMessage);updateSave()};
   save.onclick=async function(){
     if(busy||!ready||!uid||!st)return;
     if(nameLocked){submitScore(nameIn.value);return}
@@ -658,17 +662,19 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
     if(busy||scoreSent||!name)return;
     busy=true;updateSave();confirm.disabled=true;
     try{
-      const {data,error}=await db.rpc('submit_score',{p_name:name,p_score:st.score,p_right_count:st.right,p_max_combo:st.maxCombo});
+      if(!st.runId)throw new Error('invalid_run');
+      const {data,error}=await db.rpc('game_finish',{p_run_id:st.runId,p_name:name});
       if(error)throw error;
-      const saved=Array.isArray(data)?data[0]:data;
-      if(!saved)throw new Error('Supabase ไม่ส่งข้อมูลคะแนนกลับมา');
+      if(!data||data.ok!==true)throw new Error((data&&data.error)||'submit_failed');
+      const saved=data;
       const hadName=nameLocked;lockName(saved.name);scoreSent=true;
       try{localStorage.setItem('wsg_name',saved.name)}catch(e){}
       say2(saved.score>st.score?'คะแนนสูงสุดเดิมของคุณคือ '+saved.score+' เก็บไว้ตามเดิม':hadName?'อัปเดตคะแนนแล้ว ใช้ชื่อเดิม':'บันทึกคะแนนแล้ว รอบต่อไปใช้ชื่อเดิมส่งคะแนนได้');
       try{await refreshLeaderboard()}catch(e){console.warn('Leaderboard refresh failed',e)}
     }catch(e){
-      console.error('[wsg] submit_score failed',e);
-      if(e&&/player_banned/.test(String(e.message||''))){say2('บัญชีนี้ถูกระงับการส่งคะแนน ติดต่อผู้ดูแลระบบ')}
+      console.error('[wsg] game_finish failed',e);
+      if(e&&/run_flagged/.test(String(e.message||''))){scoreBlocked=true;say2('รอบนี้ไม่ถูกบันทึกคะแนน เนื่องจากตรวจพบรูปแบบการเล่นที่ผิดปกติ')}
+      else if(e&&/player_banned/.test(String(e.message||''))){say2('บัญชีนี้ถูกระงับการส่งคะแนน ติดต่อผู้ดูแลระบบ')}
       else if(e&&e.code==='invalid_argument'){form.classList.add('hidden');say2('บัญชีนี้ยังส่งคะแนนไม่ได้ ดูอันดับได้อย่างเดียว')}
       else if(e&&e.code==='23505'){
         nameIn.classList.add('is-duplicate');nameHint.classList.add('is-duplicate');nameIn.setAttribute('aria-invalid','true');nameHint.textContent='ชื่อซ้ำ';say2('ชื่อซ้ำ');
@@ -684,7 +690,7 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
   (async function(){
     try{
       const connection=await window.supabaseReady;
-      db=connection&&connection.client;uid=connection&&connection.user&&connection.user.id;
+      db=connection&&connection.client;uid=connection&&connection.user&&connection.user.id;dbClient=db;
       if(!db||!uid){
         connectionMessage=connection&&connection.error?connection.error.message:'เชื่อม Supabase ไม่สำเร็จ';
         form.classList.add('hidden');list.textContent='';const li=document.createElement('li');li.className='caption-1 muted py-2 text-center';li.textContent=connectionMessage;list.append(li);renderHome([]);box.classList.remove('hidden');say2(connectionMessage);return;
@@ -694,14 +700,15 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
       if(own&&own.name)lockName(own.name);
       await refreshLeaderboard();
       ready=true;connectionMessage='';moreButton.hidden=false;box.classList.remove('hidden');updateSave();
-      db.channel('leaderboard').on('postgres_changes',{event:'*',schema:'public',table:'scores'},()=>{refreshLeaderboard().catch(e=>console.warn('Leaderboard refresh failed',e))}).subscribe();
+      // ใช้ polling เพราะ RLS ของ scores อนุญาตให้เห็นเฉพาะแถวของตัวเอง
+      // ทำให้ postgres_changes ของผู้เล่นคนอื่นไม่ถูกส่งมา
       window.setInterval(()=>{if(document.visibilityState==='visible')refreshLeaderboard().catch(e=>console.warn('Leaderboard refresh failed',e))},15000);
       document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshLeaderboard().catch(e=>console.warn('Leaderboard refresh failed',e))});
     }catch(e){
       console.error('[wsg] leaderboard init failed',e);
       const raw=String((e&&e.message)||''),code=String((e&&e.code)||'');
       connectionMessage=(code==='PGRST202'||code==='PGRST205'||code==='42P01'||/does not exist|schema cache/i.test(raw))
-        ?'ฐานข้อมูลเกมยังไม่พร้อม — กรุณารัน Database/setup.sql ใน Supabase SQL Editor'
+        ?'ฐานข้อมูลเกมยังไม่พร้อม — กรุณารัน Database/setup.sql และ Database/server_scoring.sql ใน Supabase SQL Editor'
         :'เชื่อม Supabase ไม่สำเร็จ ตรวจ URL, key และไฟล์ setup.sql';
       form.classList.add('hidden');list.textContent='';const li=document.createElement('li');li.className='caption-1 muted py-2 text-center';li.textContent=connectionMessage;list.append(li);renderHome([]);box.classList.remove('hidden');say2(connectionMessage);
     }
@@ -747,7 +754,7 @@ $('startBtn').onclick=start;$('again').onclick=start;$('home').onclick=()=>{show
   if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
   if('ResizeObserver' in window)new ResizeObserver(fit).observe(tag);
 })();
-$('mute').onclick=()=>{sound.muted=!sound.muted;$('mute').setAttribute('aria-pressed',String(!sound.muted));$('mute').setAttribute('aria-label',sound.muted?'เปิดเสียง':'ปิดเสียง')};
+$('mute').onclick=()=>{sound.muted=!sound.muted;$('mute').setAttribute('aria-pressed',String(!sound.muted))};
 $('item').addEventListener('click',()=>{selected=!selected;$('item').classList.toggle('sel',selected);$('game').classList.toggle('armed',selected)});
 $('item').addEventListener('dragstart',()=>$('game').classList.add('armed'));
 $('item').addEventListener('dragend',()=>$('game').classList.remove('armed'));
