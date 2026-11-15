@@ -1,3 +1,22 @@
+-- ===========================================================================
+--  ระบบแอดมินฉบับสมบูรณ์ — Waste Sorting Game
+--  วิธีใช้: Supabase Dashboard > SQL Editor > วางทั้งไฟล์ > Run (ครั้งเดียว)
+--  ต้องรันหลัง Database/setup.sql และ Database/server_scoring.sql
+--  รันซ้ำได้ (idempotent) — รหัสผ่านจะถูก hash เฉพาะแถวที่ยังเป็น plaintext
+--  ไฟล์นี้ไม่ seed รหัสผ่าน default: ดูวิธีสร้างผู้ดูแลคนแรกที่ข้อ 12 ด้านล่าง
+--
+--  สิ่งที่ได้:
+--   * รหัสผ่านแอดมินเก็บเป็น bcrypt hash (pgcrypto) ไม่เก็บ plaintext
+--   * session token แบบสุ่ม 32 byte + หมดอายุ 8 ชั่วโมง (เก็บเฉพาะ hash)
+--   * จำกัดการเดารหัสผ่าน 5 ครั้ง / ล็อก 15 นาที
+--   * audit log ทุกการกระทำของแอดมิน
+--   * แบน/ปลดแบนผู้เล่น (บล็อกการส่งคะแนนผ่าน trigger)
+--   * ค้นหา / เรียง / แบ่งหน้า / ลบ / รีเซ็ต / ตั้งคะแนน / เปลี่ยนชื่อผู้เล่น
+--   * ตรวจรอบเกมที่ถูก anti-bot flag + อนุมัติ/ยืนยันว่าเป็นบอท
+--   * เปลี่ยนรหัสผ่าน + จัดการบัญชีแอดมิน + role (owner / editor / viewer)
+--   * ดู/ตัด session ของแอดมิน (owner)
+-- ===========================================================================
+
 -- ---------------------------------------------------------------------------
 -- 0) Extension
 -- ---------------------------------------------------------------------------
@@ -87,6 +106,8 @@ create table if not exists public.admin_login_attempts (
   locked_until    timestamptz,
   updated_at      timestamptz not null default now()
 );
+create index if not exists admin_login_attempts_updated_idx
+  on public.admin_login_attempts (updated_at);
 
 create table if not exists public.banned_players (
   user_id    uuid primary key,
@@ -195,6 +216,22 @@ begin
 end;
 $$;
 
+-- ใช้กับ RPC ที่ "เขียนข้อมูล" หรืออ่านข้อมูลอ่อนไหว: บังคับให้เปลี่ยนรหัสผ่านก่อน
+-- (admin_dashboard / admin_change_password / admin_logout ยังใช้งานได้เพื่อให้ UI
+--  พาไปหน้าเปลี่ยนรหัสผ่านได้)
+create or replace function public.admin_assert_ready(p_admin public.admin_users)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if p_admin.must_change_password then
+    raise exception using errcode = '28000', message = 'password_change_required';
+  end if;
+end;
+$$;
+
 create or replace function public.admin_log(
   p_admin_id uuid,
   p_action text,
@@ -231,6 +268,15 @@ begin
   if v_key = '' or coalesce(p_password, '') = '' then
     return jsonb_build_object('ok', false, 'error', 'missing_credentials');
   end if;
+
+  -- จำกัดความยาวก่อนแตะตาราง เพื่อกันการยิง username ขนาดใหญ่/ไม่จำกัดจำนวนแถว
+  if char_length(v_key) > 64 then
+    return jsonb_build_object('ok', false, 'error', 'invalid_credentials');
+  end if;
+
+  -- ล้างข้อมูลเก่าทุกครั้ง ไม่ใช่เฉพาะตอนล็อกอินผิด
+  delete from public.admin_login_attempts where updated_at < now() - interval '1 hour';
+  delete from public.admin_sessions where expires_at <= now();
 
   select * into v_attempt from public.admin_login_attempts where username = v_key;
   if found and v_attempt.locked_until is not null then
@@ -278,8 +324,6 @@ begin
           end,
           updated_at = now();
 
-    delete from public.admin_login_attempts where updated_at < now() - interval '1 day';
-
     select fail_count into v_fail
       from public.admin_login_attempts where username = v_key;
 
@@ -291,7 +335,6 @@ begin
   end if;
 
   delete from public.admin_login_attempts where username = v_key;
-  delete from public.admin_sessions where expires_at <= now();
 
   v_token := encode(extensions.gen_random_bytes(32), 'hex');
 
@@ -437,42 +480,69 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 7) จัดการคะแนนผู้เล่น
 -- ---------------------------------------------------------------------------
-create or replace function public.admin_delete_score(p_token text, p_user_id uuid)
+drop function if exists public.admin_delete_score(text, uuid);
+
+create or replace function public.admin_delete_score(
+  p_token text,
+  p_user_id uuid,
+  p_reason text default null
+)
 returns jsonb
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_admin public.admin_users;
-  v_name  text;
+  v_admin  public.admin_users;
+  v_name   text;
+  v_reason text := btrim(coalesce(p_reason, ''));
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner', 'editor']);
+  perform public.admin_assert_ready(v_admin);
+
+  if char_length(v_reason) < 3 or char_length(v_reason) > 200 then
+    raise exception using errcode = '22023', message = 'invalid_reason';
+  end if;
 
   delete from public.scores where user_id = p_user_id returning name into v_name;
   if not found then
     raise exception using errcode = 'P0002', message = 'player_not_found';
   end if;
 
+  -- ไม่ทิ้ง ban ค้างไว้แบบไม่มีแถวคะแนนให้ปลดแบนจากหน้าแอดมิน
+  delete from public.banned_players where user_id = p_user_id;
+
   perform public.admin_log(v_admin.user_id, 'delete_score', p_user_id,
-                           jsonb_build_object('name', v_name));
+                           jsonb_build_object('name', v_name, 'reason', v_reason));
   return jsonb_build_object('ok', true, 'deleted', v_name);
 end;
 $$;
 
-create or replace function public.admin_reset_score(p_token text, p_user_id uuid)
+drop function if exists public.admin_reset_score(text, uuid);
+
+create or replace function public.admin_reset_score(
+  p_token text,
+  p_user_id uuid,
+  p_reason text default null
+)
 returns jsonb
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_admin public.admin_users;
-  v_name  text;
+  v_admin  public.admin_users;
+  v_name   text;
+  v_reason text := btrim(coalesce(p_reason, ''));
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner', 'editor']);
+  perform public.admin_assert_ready(v_admin);
+
+  if char_length(v_reason) < 3 or char_length(v_reason) > 200 then
+    raise exception using errcode = '22023', message = 'invalid_reason';
+  end if;
 
   perform set_config('wsg.admin_bypass', 'on', true);
 
@@ -486,8 +556,276 @@ begin
   end if;
 
   perform public.admin_log(v_admin.user_id, 'reset_score', p_user_id,
-                           jsonb_build_object('name', v_name));
+                           jsonb_build_object('name', v_name, 'reason', v_reason));
   return jsonb_build_object('ok', true, 'reset', v_name);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 7.1) ตั้งคะแนนใหม่ (เฉพาะ owner) — ต้องมีเหตุผลและเก็บค่าเก่า/ใหม่ใน audit
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_set_score(
+  p_token text,
+  p_user_id uuid,
+  p_score integer,
+  p_reason text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin  public.admin_users;
+  v_old    public.scores;
+  v_reason text := btrim(coalesce(p_reason, ''));
+  v_score  integer := coalesce(p_score, -1);
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
+
+  if v_score < 0 or v_score > 1000000 then
+    raise exception using errcode = '22023', message = 'invalid_score';
+  end if;
+  if char_length(v_reason) < 3 or char_length(v_reason) > 200 then
+    raise exception using errcode = '22023', message = 'invalid_reason';
+  end if;
+
+  if exists (select 1 from public.banned_players b where b.user_id = p_user_id) then
+    raise exception using errcode = '42501', message = 'player_banned';
+  end if;
+
+  select * into v_old
+    from public.scores
+   where user_id = p_user_id
+   for update;
+  if not found then
+    raise exception using errcode = 'P0002', message = 'player_not_found';
+  end if;
+
+  update public.scores
+     set score = v_score,
+         updated_at = now()
+   where user_id = p_user_id;
+
+  perform public.admin_log(v_admin.user_id, 'score_set', p_user_id,
+                           jsonb_build_object(
+                             'name', v_old.name,
+                             'old_score', v_old.score,
+                             'new_score', v_score,
+                             'reason', v_reason
+                           ));
+  return jsonb_build_object(
+    'ok', true,
+    'name', v_old.name,
+    'old_score', v_old.score,
+    'score', v_score
+  );
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 7.2) ค้นหา / โปรไฟล์ผู้เล่น (ทุก role อ่านได้)
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_player_search(
+  p_token  text,
+  p_query  text default '',
+  p_limit  integer default 20,
+  p_offset integer default 0
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin  public.admin_users;
+  v_query  text := lower(btrim(coalesce(p_query, '')));
+  v_limit  integer := least(greatest(coalesce(p_limit, 20), 1), 100);
+  v_offset integer := greatest(coalesce(p_offset, 0), 0);
+  v_total  bigint;
+  v_rows   jsonb;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner', 'editor', 'viewer']);
+  perform public.admin_assert_ready(v_admin);
+
+  select count(*) into v_total
+    from public.scores s
+   where v_query = ''
+      or position(v_query in lower(s.name)) > 0
+      or position(v_query in s.user_id::text) > 0;
+
+  select coalesce(jsonb_agg(row_to_json(r)), '[]'::jsonb) into v_rows
+    from (
+      select s.user_id,
+             s.name,
+             s.score,
+             s.right_count,
+             s.max_combo,
+             s.updated_at,
+             (b.user_id is not null) as is_banned,
+             b.reason as ban_reason,
+             (s.user_id::text = v_query) as exact_id
+        from public.scores s
+        left join public.banned_players b on b.user_id = s.user_id
+       where v_query = ''
+          or position(v_query in lower(s.name)) > 0
+          or position(v_query in s.user_id::text) > 0
+       order by (s.user_id::text = v_query) desc,
+                (lower(s.name) = v_query) desc,
+                s.score desc,
+                s.user_id asc
+       limit v_limit offset v_offset
+    ) r;
+
+  return jsonb_build_object(
+    'rows', v_rows,
+    'total', v_total,
+    'limit', v_limit,
+    'offset', v_offset
+  );
+end;
+$$;
+
+create or replace function public.admin_player_detail(p_token text, p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin public.admin_users;
+  v_row   jsonb;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner', 'editor', 'viewer']);
+  perform public.admin_assert_ready(v_admin);
+
+  select jsonb_build_object(
+           'user_id', s.user_id,
+           'name', s.name,
+           'score', s.score,
+           'right_count', s.right_count,
+           'max_combo', s.max_combo,
+           'updated_at', s.updated_at,
+           'is_banned', (b.user_id is not null),
+           'ban_reason', b.reason,
+           'banned_at', b.created_at,
+           'rank', (
+             select count(*) + 1
+               from public.scores o
+              where o.score > s.score
+                 or (o.score = s.score and o.updated_at < s.updated_at)
+                 or (o.score = s.score and o.updated_at = s.updated_at and o.user_id < s.user_id)
+           ),
+           'run_count', (
+             select count(*) from public.game_runs r where r.user_id = s.user_id
+           ),
+           'flagged_count', (
+             select count(*) from public.game_runs r
+              where r.user_id = s.user_id and r.suspicious
+           ),
+           'last_played_at', (
+             select max(coalesce(r.finished_at, r.started_at))
+               from public.game_runs r
+              where r.user_id = s.user_id
+           ),
+           'recent_runs', coalesce((
+             select jsonb_agg(row_to_json(x))
+               from (
+                 select r.id, r.score, r.answered, r.right_count, r.status,
+                        r.suspicious, r.flag_reason, r.started_at, r.finished_at
+                   from public.game_runs r
+                  where r.user_id = s.user_id
+                  order by r.created_at desc
+                  limit 5
+               ) x
+           ), '[]'::jsonb)
+         )
+    into v_row
+    from public.scores s
+    left join public.banned_players b on b.user_id = s.user_id
+   where s.user_id = p_user_id;
+
+  if v_row is null then
+    raise exception using errcode = 'P0002', message = 'player_not_found';
+  end if;
+
+  return v_row;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 7.3) ประวัติรอบเกมของผู้เล่น (ทุก role อ่านได้)
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_player_runs(
+  p_token  text,
+  p_user_id uuid,
+  p_limit  integer default 20,
+  p_offset integer default 0
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin  public.admin_users;
+  v_limit  integer := least(greatest(coalesce(p_limit, 20), 1), 100);
+  v_offset integer := greatest(coalesce(p_offset, 0), 0);
+  v_total  bigint;
+  v_rows   jsonb;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner', 'editor', 'viewer']);
+  perform public.admin_assert_ready(v_admin);
+
+  select count(*) into v_total
+    from public.game_runs r
+   where r.user_id = p_user_id;
+
+  select coalesce(jsonb_agg(row_to_json(r)), '[]'::jsonb) into v_rows
+    from (
+      select r.id,
+             r.user_id,
+             coalesce(r.player_name, s.name, 'ผู้เล่น ' || left(r.user_id::text, 8)) as player_name,
+             r.score,
+             r.answered,
+             r.right_count,
+             r.max_combo,
+             r.status,
+             r.suspicious,
+             r.flag_reason,
+             r.started_at,
+             r.finished_at,
+             case when r.answered > 0
+                  then round((r.delta_sum::numeric / r.answered), 2)
+                  else null end as mean_delta_ms,
+             case when r.answered > 0
+                  then round((
+                    sqrt(greatest(0,
+                      (r.delta_sumsq / r.answered)
+                      - power(r.delta_sum::double precision / r.answered, 2)
+                    ))
+                  )::numeric, 2)
+                  else null end as sd_delta_ms,
+             r.min_delta,
+             r.max_delta
+        from public.game_runs r
+        left join public.scores s on s.user_id = r.user_id
+       where r.user_id = p_user_id
+       order by r.created_at desc
+       limit v_limit offset v_offset
+    ) r;
+
+  return jsonb_build_object(
+    'rows', v_rows,
+    'total', v_total,
+    'limit', v_limit,
+    'offset', v_offset
+  );
 end;
 $$;
 
@@ -504,6 +842,7 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner', 'editor']);
+  perform public.admin_assert_ready(v_admin);
 
   if char_length(v_name) < 1 or char_length(v_name) > 16 then
     raise exception using errcode = '22023', message = 'invalid_name';
@@ -553,8 +892,16 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner', 'editor']);
+  perform public.admin_assert_ready(v_admin);
+
+  if char_length(coalesce(v_reason, '')) < 3 or char_length(coalesce(v_reason, '')) > 200 then
+    raise exception using errcode = '22023', message = 'invalid_reason';
+  end if;
 
   select name into v_name from public.scores where user_id = p_user_id;
+  if not found then
+    raise exception using errcode = 'P0002', message = 'player_not_found';
+  end if;
 
   insert into public.banned_players(user_id, reason, banned_by)
   values (p_user_id, v_reason, v_admin.user_id)
@@ -581,6 +928,7 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner', 'editor']);
+  perform public.admin_assert_ready(v_admin);
 
   select name into v_name from public.scores where user_id = p_user_id;
 
@@ -595,8 +943,357 @@ begin
 end;
 $$;
 
+-- ล้าง ban ที่ไม่มีแถวคะแนนค้างจากเวอร์ชันก่อน (แบนแล้วลบ score)
+-- ทำให้ banned_count ตรงกับรายการที่ปลดแบนได้จากหน้าแอดมิน
+delete from public.banned_players b
+ where not exists (select 1 from public.scores s where s.user_id = b.user_id);
+
+-- ---------------------------------------------------------------------------
+-- 8.1) ตรวจสอบรอบเกม / anti-bot (ทุก role อ่านได้, editor จัดการได้)
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_runs_list(
+  p_token  text,
+  p_status text default 'all',
+  p_player uuid default null,
+  p_limit  integer default 25,
+  p_offset integer default 0
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin  public.admin_users;
+  v_status text := lower(btrim(coalesce(p_status, 'all')));
+  v_limit  integer := least(greatest(coalesce(p_limit, 25), 1), 100);
+  v_offset integer := greatest(coalesce(p_offset, 0), 0);
+  v_total  bigint;
+  v_rows   jsonb;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner', 'editor', 'viewer']);
+  perform public.admin_assert_ready(v_admin);
+
+  if v_status not in ('all', 'suspicious', 'active', 'finished', 'abandoned') then
+    raise exception using errcode = '22023', message = 'invalid_status';
+  end if;
+
+  select count(*) into v_total
+    from public.game_runs r
+   where (p_player is null or r.user_id = p_player)
+     and case v_status
+           when 'all' then true
+           when 'suspicious' then r.suspicious
+           else r.status = v_status
+         end;
+
+  select coalesce(jsonb_agg(row_to_json(r)), '[]'::jsonb) into v_rows
+    from (
+      select r.id,
+             r.user_id,
+             coalesce(r.player_name, s.name, 'ผู้เล่น ' || left(r.user_id::text, 8)) as player_name,
+             r.score,
+             r.answered,
+             r.right_count,
+             r.max_combo,
+             r.status,
+             r.suspicious,
+             r.flag_reason,
+             r.started_at,
+             r.finished_at,
+             case when r.answered > 0
+                  then round((r.delta_sum::numeric / r.answered), 2)
+                  else null end as mean_delta_ms,
+             case when r.answered > 0
+                  then round((
+                    sqrt(greatest(0,
+                      (r.delta_sumsq / r.answered)
+                      - power(r.delta_sum::double precision / r.answered, 2)
+                    ))
+                  )::numeric, 2)
+                  else null end as sd_delta_ms,
+             r.min_delta,
+             r.max_delta
+        from public.game_runs r
+        left join public.scores s on s.user_id = r.user_id
+       where (p_player is null or r.user_id = p_player)
+         and case v_status
+               when 'all' then true
+               when 'suspicious' then r.suspicious
+               else r.status = v_status
+             end
+       order by r.created_at desc
+       limit v_limit offset v_offset
+    ) r;
+
+  return jsonb_build_object(
+    'rows', v_rows,
+    'total', v_total,
+    'limit', v_limit,
+    'offset', v_offset,
+    'status', v_status
+  );
+end;
+$$;
+
+create or replace function public.admin_run_detail(p_token text, p_run_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin public.admin_users;
+  v_row   jsonb;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner', 'editor', 'viewer']);
+  perform public.admin_assert_ready(v_admin);
+
+  select jsonb_build_object(
+           'id', r.id,
+           'user_id', r.user_id,
+           'player_name', coalesce(r.player_name, s.name, 'ผู้เล่น ' || left(r.user_id::text, 8)),
+           'score', r.score,
+           'answered', r.answered,
+           'right_count', r.right_count,
+           'max_combo', r.max_combo,
+           'status', r.status,
+           'suspicious', r.suspicious,
+           'flag_reason', r.flag_reason,
+           'started_at', r.started_at,
+           'finished_at', r.finished_at,
+           'ends_at', r.ends_at,
+           'last_answer_at', r.last_answer_at,
+           'delta_sum', r.delta_sum,
+           'min_delta', r.min_delta,
+           'max_delta', r.max_delta,
+           'items_count', coalesce(array_length(r.items, 1), 0),
+           'mean_delta_ms', case when r.answered > 0
+                                 then round((r.delta_sum::numeric / r.answered), 2)
+                                 else null end,
+           'sd_delta_ms', case when r.answered > 0
+                               then round((
+                                 sqrt(greatest(0,
+                                   (r.delta_sumsq / r.answered)
+                                   - power(r.delta_sum::double precision / r.answered, 2)
+                                 ))
+                               )::numeric, 2)
+                               else null end
+         )
+    into v_row
+    from public.game_runs r
+    left join public.scores s on s.user_id = r.user_id
+   where r.id = p_run_id;
+
+  if v_row is null then
+    raise exception using errcode = 'P0002', message = 'run_not_found';
+  end if;
+
+  return v_row;
+end;
+$$;
+
+create or replace function public.admin_run_review(
+  p_token      text,
+  p_run_id     uuid,
+  p_action     text,
+  p_note       text default null,
+  p_save_score boolean default false
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin  public.admin_users;
+  v_action text := lower(btrim(coalesce(p_action, '')));
+  v_note   text := btrim(coalesce(p_note, ''));
+  v_run    public.game_runs;
+  v_name   text;
+  v_saved  public.scores;
+  v_before jsonb;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner', 'editor']);
+  perform public.admin_assert_ready(v_admin);
+
+  if v_action not in ('approve', 'reject', 'flag', 'terminate') then
+    raise exception using errcode = '22023', message = 'invalid_action';
+  end if;
+  if char_length(v_note) < 3 or char_length(v_note) > 200 then
+    raise exception using errcode = '22023', message = 'invalid_reason';
+  end if;
+  if v_action = 'approve' and coalesce(p_save_score, false) then
+    perform public.admin_require_role(v_admin, array['owner']);
+  end if;
+
+  select * into v_run
+    from public.game_runs
+   where id = p_run_id
+   for update;
+  if not found then
+    raise exception using errcode = 'P0002', message = 'run_not_found';
+  end if;
+
+  v_before := jsonb_build_object(
+    'status', v_run.status,
+    'suspicious', v_run.suspicious,
+    'flag_reason', v_run.flag_reason,
+    'score', v_run.score
+  );
+
+  if v_action = 'terminate' then
+    if v_run.status <> 'active' then
+      raise exception using errcode = '22023', message = 'run_not_active';
+    end if;
+
+    update public.game_runs
+       set status = 'abandoned',
+           finished_at = coalesce(finished_at, now())
+     where id = p_run_id;
+
+    perform public.admin_log(v_admin.user_id, 'run_terminate', v_run.user_id,
+                             jsonb_build_object('run_id', p_run_id, 'note', v_note, 'before', v_before));
+    return jsonb_build_object('ok', true, 'action', v_action);
+  end if;
+
+  if v_action = 'flag' then
+    update public.game_runs
+       set suspicious = true,
+           flag_reason = v_note
+     where id = p_run_id;
+
+    perform public.admin_log(v_admin.user_id, 'run_flag', v_run.user_id,
+                             jsonb_build_object('run_id', p_run_id, 'note', v_note, 'before', v_before));
+    return jsonb_build_object('ok', true, 'action', v_action);
+  end if;
+
+  if not v_run.suspicious then
+    raise exception using errcode = '22023', message = 'run_not_suspicious';
+  end if;
+
+  if v_action = 'reject' then
+    update public.game_runs
+       set suspicious = true,
+           flag_reason = v_note
+     where id = p_run_id;
+
+    perform public.admin_log(v_admin.user_id, 'run_reject', v_run.user_id,
+                             jsonb_build_object('run_id', p_run_id, 'note', v_note, 'before', v_before));
+    return jsonb_build_object('ok', true, 'action', v_action);
+  end if;
+
+  -- approve
+  if v_run.status <> 'finished' then
+    raise exception using errcode = '22023', message = 'run_not_finished';
+  end if;
+
+  if coalesce(p_save_score, false) then
+    if exists (select 1 from public.banned_players b where b.user_id = v_run.user_id) then
+      raise exception using errcode = '42501', message = 'player_banned';
+    end if;
+
+    v_name := nullif(btrim(coalesce(v_run.player_name, '')), '');
+    if v_name is null then
+      select s.name into v_name from public.scores s where s.user_id = v_run.user_id;
+    end if;
+    if v_name is null or char_length(v_name) < 1 or char_length(v_name) > 16 then
+      raise exception using errcode = '22023', message = 'player_name_missing';
+    end if;
+    if v_run.score <= 0 then
+      raise exception using errcode = '22023', message = 'no_score';
+    end if;
+
+    begin
+      insert into public.scores as existing (user_id, name, score, right_count, max_combo)
+      values (v_run.user_id, v_name, v_run.score, v_run.right_count, v_run.max_combo)
+      on conflict (user_id) do update set
+        score = greatest(existing.score, excluded.score),
+        right_count = case when excluded.score > existing.score then excluded.right_count else existing.right_count end,
+        max_combo = case when excluded.score > existing.score then excluded.max_combo else existing.max_combo end,
+        updated_at = case when excluded.score > existing.score then now() else existing.updated_at end
+      returning * into v_saved;
+    exception when unique_violation then
+      raise exception using errcode = '23505', message = 'duplicate_player_name';
+    end;
+  end if;
+
+  update public.game_runs
+     set suspicious = false,
+         flag_reason = null
+   where id = p_run_id;
+
+  perform public.admin_log(v_admin.user_id, 'run_approve', v_run.user_id,
+                           jsonb_build_object(
+                             'run_id', p_run_id,
+                             'note', v_note,
+                             'save_score', coalesce(p_save_score, false),
+                             'saved_score', case when v_saved.user_id is null then null else v_saved.score end,
+                             'before', v_before
+                           ));
+
+  return jsonb_build_object(
+    'ok', true,
+    'action', v_action,
+    'saved', (v_saved.user_id is not null),
+    'score', v_saved.score
+  );
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 8.2) สถิติระบบ (ทุก role อ่านได้)
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_stats(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin public.admin_users;
+  v_stats jsonb;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner', 'editor', 'viewer']);
+  perform public.admin_assert_ready(v_admin);
+
+  select jsonb_build_object(
+           'player_count',  (select count(*) from public.scores),
+           'average_score', (select coalesce(round(avg(s.score))::int, 0) from public.scores s),
+           'highest_score', (select coalesce(max(s.score), 0) from public.scores s),
+           'banned_count',  (select count(*) from public.banned_players),
+           'admin_count',   (select count(*) from public.admin_users a where a.is_active),
+           'total_runs',    (select count(*) from public.game_runs),
+           'runs_today',    (select count(*) from public.game_runs r
+                              where r.created_at >= date_trunc('day', now())),
+           'active_runs',   (select count(*) from public.game_runs r where r.status = 'active'),
+           'finished_runs', (select count(*) from public.game_runs r where r.status = 'finished'),
+           'flagged_runs',  (select count(*) from public.game_runs r where r.suspicious),
+           'flagged_today', (select count(*) from public.game_runs r
+                              where r.suspicious and r.created_at >= date_trunc('day', now())),
+           'avg_run_seconds', (
+             select coalesce(round(avg(extract(epoch from (coalesce(r.finished_at, now()) - r.started_at)))::numeric, 0), 0)
+               from public.game_runs r
+              where r.status in ('finished', 'abandoned')
+           )
+         )
+    into v_stats;
+
+  return v_stats;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 9) รหัสผ่านของตัวเอง + audit log
+--    การเปลี่ยนรหัสผ่านต้องกรอก "รหัสผ่านพิเศษ" ซึ่งตรวจฝั่งฐานข้อมูลเท่านั้น
+--    (ถ้าเคยติดตั้งเวอร์ชันก่อนที่มี 3 พารามิเตอร์ ให้ลบของเดิมทิ้งก่อน
+--     เพื่อไม่ให้เรียกข้ามการตรวจรหัสผ่านพิเศษได้)
+--    ตรวจ "รหัสผ่านปัจจุบัน" ก่อน "รหัสผ่านพิเศษ" เพื่อไม่ให้เดาคำพิเศษ
+--    ได้โดยไม่รู้รหัสผ่านจริง
 -- ---------------------------------------------------------------------------
 drop function if exists public.admin_change_password(text, text, text);
 
@@ -662,7 +1359,8 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- 9.1) ตั้ง/เปลี่ยน "รหัสผ่านพิเศษ"
+-- 9.1) ตั้ง/เปลี่ยน "รหัสผ่านพิเศษ" (เฉพาะ owner)
+--      ต้องยืนยันด้วยรหัสผ่านปัจจุบัน + รหัสผ่านพิเศษเดิม
 -- ---------------------------------------------------------------------------
 create or replace function public.admin_set_special_password(
   p_token text,
@@ -683,6 +1381,7 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
 
   if v_admin.password_hash is null
      or extensions.crypt(coalesce(p_current, ''), v_admin.password_hash) <> v_admin.password_hash then
@@ -733,6 +1432,7 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner', 'editor', 'viewer']);
+  perform public.admin_assert_ready(v_admin);
 
   select coalesce(jsonb_agg(row_to_json(r)), '[]'::jsonb) into v_rows
     from (
@@ -749,7 +1449,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- 10) จัดการบัญชีแอดมิน
+-- 10) จัดการบัญชีแอดมิน (owner เท่านั้น)
 -- ---------------------------------------------------------------------------
 create or replace function public.admin_list_admins(p_token text)
 returns jsonb
@@ -763,6 +1463,7 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
 
   select coalesce(jsonb_agg(row_to_json(r)), '[]'::jsonb) into v_rows
     from (
@@ -795,6 +1496,7 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
 
   if char_length(v_name) < 1 or char_length(v_name) > 64 then
     raise exception using errcode = '22023', message = 'invalid_name';
@@ -832,6 +1534,7 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
 
   if p_user_id = v_admin.user_id then
     raise exception using errcode = '22023', message = 'cannot_disable_self';
@@ -874,6 +1577,7 @@ declare
 begin
   v_admin := public.admin_assert_session(p_token);
   perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
 
   if char_length(coalesce(p_password, '')) < 8 then
     raise exception using errcode = '22023', message = 'weak_password';
@@ -899,17 +1603,120 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- 10.1) เซสชันแอดมิน (owner เท่านั้น)
+--       เปิดเผยเฉพาะ hash ของ token ไม่ใช่ token จริง และตัด session ตัวเองไม่ได้
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_sessions_list(
+  p_token    text,
+  p_admin_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin   public.admin_users;
+  v_current text;
+  v_rows    jsonb;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
+
+  v_current := encode(extensions.digest(p_token, 'sha256'), 'hex');
+
+  select coalesce(jsonb_agg(row_to_json(r)), '[]'::jsonb) into v_rows
+    from (
+      select s.token_hash,
+             s.admin_id,
+             a.username,
+             a.role,
+             s.created_at,
+             s.last_seen_at,
+             s.expires_at,
+             (s.token_hash = v_current) as is_current
+        from public.admin_sessions s
+        join public.admin_users a on a.user_id = s.admin_id
+       where s.expires_at > now()
+         and (p_admin_id is null or s.admin_id = p_admin_id)
+       order by s.last_seen_at desc
+    ) r;
+
+  return v_rows;
+end;
+$$;
+
+create or replace function public.admin_revoke_session(p_token text, p_session_hash text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin    public.admin_users;
+  v_hash     text := lower(btrim(coalesce(p_session_hash, '')));
+  v_current  text;
+  v_admin_id uuid;
+  v_username text;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
+
+  if v_hash !~ '^[0-9a-f]{64}$' then
+    raise exception using errcode = '22023', message = 'invalid_session_id';
+  end if;
+
+  v_current := encode(extensions.digest(p_token, 'sha256'), 'hex');
+  if v_hash = v_current then
+    raise exception using errcode = '22023', message = 'cannot_revoke_self';
+  end if;
+
+  select s.admin_id, a.username
+    into v_admin_id, v_username
+    from public.admin_sessions s
+    join public.admin_users a on a.user_id = s.admin_id
+   where s.token_hash = v_hash;
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'session_not_found';
+  end if;
+
+  delete from public.admin_sessions where token_hash = v_hash;
+
+  perform public.admin_log(v_admin.user_id, 'revoke_session', v_admin_id,
+                           jsonb_build_object(
+                             'username', v_username,
+                             'session', left(v_hash, 12)
+                           ));
+  return jsonb_build_object('ok', true, 'username', v_username);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- 11) สิทธิ์การเรียกใช้ (grant)
 -- ---------------------------------------------------------------------------
 revoke all on function public.admin_assert_session(text) from public, anon, authenticated;
+revoke all on function public.admin_assert_ready(public.admin_users) from public, anon, authenticated;
 revoke all on function public.admin_require_role(public.admin_users, text[]) from public, anon, authenticated;
 revoke all on function public.admin_log(uuid, text, uuid, jsonb) from public, anon, authenticated;
 
 revoke all on function public.admin_login(text, text) from public;
 revoke all on function public.admin_logout(text) from public;
 revoke all on function public.admin_dashboard(text, text, integer, integer, text, text, boolean) from public;
-revoke all on function public.admin_delete_score(text, uuid) from public;
-revoke all on function public.admin_reset_score(text, uuid) from public;
+revoke all on function public.admin_delete_score(text, uuid, text) from public;
+revoke all on function public.admin_reset_score(text, uuid, text) from public;
+revoke all on function public.admin_set_score(text, uuid, integer, text) from public;
+revoke all on function public.admin_player_search(text, text, integer, integer) from public;
+revoke all on function public.admin_player_detail(text, uuid) from public;
+revoke all on function public.admin_player_runs(text, uuid, integer, integer) from public;
+revoke all on function public.admin_runs_list(text, text, uuid, integer, integer) from public;
+revoke all on function public.admin_run_detail(text, uuid) from public;
+revoke all on function public.admin_run_review(text, uuid, text, text, boolean) from public;
+revoke all on function public.admin_stats(text) from public;
+revoke all on function public.admin_sessions_list(text, uuid) from public;
+revoke all on function public.admin_revoke_session(text, text) from public;
 revoke all on function public.admin_rename_player(text, uuid, text) from public;
 revoke all on function public.admin_ban_player(text, uuid, text) from public;
 revoke all on function public.admin_unban_player(text, uuid) from public;
@@ -925,8 +1732,18 @@ revoke all on function public.block_banned_player_writes() from public, anon, au
 grant execute on function public.admin_login(text, text) to anon, authenticated;
 grant execute on function public.admin_logout(text) to anon, authenticated;
 grant execute on function public.admin_dashboard(text, text, integer, integer, text, text, boolean) to anon, authenticated;
-grant execute on function public.admin_delete_score(text, uuid) to anon, authenticated;
-grant execute on function public.admin_reset_score(text, uuid) to anon, authenticated;
+grant execute on function public.admin_delete_score(text, uuid, text) to anon, authenticated;
+grant execute on function public.admin_reset_score(text, uuid, text) to anon, authenticated;
+grant execute on function public.admin_set_score(text, uuid, integer, text) to anon, authenticated;
+grant execute on function public.admin_player_search(text, text, integer, integer) to anon, authenticated;
+grant execute on function public.admin_player_detail(text, uuid) to anon, authenticated;
+grant execute on function public.admin_player_runs(text, uuid, integer, integer) to anon, authenticated;
+grant execute on function public.admin_runs_list(text, text, uuid, integer, integer) to anon, authenticated;
+grant execute on function public.admin_run_detail(text, uuid) to anon, authenticated;
+grant execute on function public.admin_run_review(text, uuid, text, text, boolean) to anon, authenticated;
+grant execute on function public.admin_stats(text) to anon, authenticated;
+grant execute on function public.admin_sessions_list(text, uuid) to anon, authenticated;
+grant execute on function public.admin_revoke_session(text, text) to anon, authenticated;
 grant execute on function public.admin_rename_player(text, uuid, text) to anon, authenticated;
 grant execute on function public.admin_ban_player(text, uuid, text) to anon, authenticated;
 grant execute on function public.admin_unban_player(text, uuid) to anon, authenticated;
@@ -939,22 +1756,38 @@ grant execute on function public.admin_set_admin_active(text, uuid, boolean) to 
 grant execute on function public.admin_reset_admin_password(text, uuid, text) to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 12) บัญชีเริ่มต้น
+-- 12) บัญชีผู้ดูแลคนแรก
+--     ไม่ seed รหัสผ่านใด ๆ ในไฟล์นี้ เพราะไฟล์ถูก commit ลง repo
+--     ให้สร้างผู้ดูแลคนแรกด้วยคำสั่งด้านล่างใน SQL Editor โดยแก้ค่า <...> ก่อนรัน
+--     (ใช้เฉพาะตอนติดตั้งใหม่ที่ยังไม่มี admin_users เท่านั้น)
 -- ---------------------------------------------------------------------------
-insert into public.admin_users (username, password_hash, role, must_change_password, password)
-select 'admin',
-       extensions.crypt('Dragon_Lukasiki', extensions.gen_salt('bf', 10)),
-       'owner',
-       true,
-       ''
- where not exists (select 1 from public.admin_users);
+-- insert into public.admin_users (username, password_hash, role, must_change_password, password)
+-- values ('admin',
+--         extensions.crypt('<STRONG_PASSWORD>', extensions.gen_salt('bf', 10)),
+--         'owner', true, '');
+--
+-- insert into public.admin_settings (id, special_password_hash)
+-- values (true, extensions.crypt('<STRONG_SPECIAL_PASSWORD>', extensions.gen_salt('bf', 10)))
+-- on conflict (id) do update
+--   set special_password_hash = excluded.special_password_hash,
+--       updated_at = now();
+--
+-- หมายเหตุ: ถ้าเป็นฐานข้อมูลเดิมที่ยังไม่มี admin_settings ให้ตั้งรหัสผ่านพิเศษ
+-- ด้วยคำสั่ง insert ด้านบนก่อน แล้วจึงเปลี่ยนรหัสผ่าน admin ผ่านหน้าเว็บ
+--
+-- หมุนรหัสผ่านผู้ดูแลเดิม (กรณีเคยมีรหัส default มาก่อน):
+-- update public.admin_users
+-- set password_hash = extensions.crypt('<NEW_STRONG_PASSWORD>', extensions.gen_salt('bf', 10)),
+--     password = '',
+--     must_change_password = true
+-- where username = 'admin';
+-- delete from public.admin_sessions;
 
--- seed รหัสผ่านพิเศษเฉพาะครั้งแรก และไม่ทับค่าที่ owner เปลี่ยนไว้แล้ว
-insert into public.admin_settings (id, special_password_hash)
-select true, extensions.crypt('im gay', extensions.gen_salt('bf', 10))
- where not exists (select 1 from public.admin_settings);
+-- ---------------------------------------------------------------------------
+-- 13) ตรวจสอบผลติดตั้ง (เรียกดูได้)
+-- ---------------------------------------------------------------------------
+-- select username, role, is_active, must_change_password, last_login_at from public.admin_users;
 
--- ---------------------------------------------------------------------------
--- 13) ตรวจสอบผลติดตั้ง
--- ---------------------------------------------------------------------------
+-- แจ้ง PostgREST ให้โหลดรายชื่อฟังก์ชัน/พารามิเตอร์ใหม่ (เช่น หลังเปลี่ยน
+-- signature ของ admin_change_password) โดยไม่ต้องรอ cache หมดอายุ
 notify pgrst, 'reload schema';
