@@ -14,7 +14,8 @@ create unique index if not exists scores_name_unique_ci
 
 alter table public.scores enable row level security;
 -- Players may read only their own full row. The leaderboard RPC returns minimal fields.
--- All writes must pass through submit_score(), which derives user_id from auth.uid().
+-- All writes must pass through game_finish() in Database/server_scoring.sql,
+-- which derives user_id from auth.uid() and computes the score on the server.
 revoke all on public.scores from public, anon, authenticated;
 grant select on public.scores to authenticated;
 
@@ -38,97 +39,17 @@ create policy "Players can read own score"
   to authenticated
   using (user_id = (select auth.uid()));
 
-create or replace function public.submit_score(
-  p_name text,
-  p_score integer,
-  p_right_count integer,
-  p_max_combo integer
-)
-returns setof public.scores
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  player_id uuid := auth.uid();
-  clean_name text := btrim(coalesce(p_name, ''));
-  saved_row public.scores;
-  full_runs integer;
-  remainder_count integer;
-  full_run_score bigint;
-  remainder_score bigint;
-  max_possible_score bigint;
-begin
-  -- Never accept a user_id from the client: the session owns the row.
-  if player_id is null then
-    raise exception 'Authentication required';
-  end if;
-  if char_length(clean_name) < 1 or char_length(clean_name) > 16 then
-    raise exception 'Name must contain 1 to 16 characters';
-  end if;
-  if p_score is null or p_score < 0 or p_right_count is null or p_right_count < 0 or p_max_combo is null or p_max_combo < 0 then
-    raise exception 'Score values must be zero or greater';
-  end if;
-
-  -- A correct answer is followed by a 450 ms transition and the round lasts 60 seconds.
-  -- This is a sanity ceiling only; client-submitted game results are never authoritative.
-  if p_right_count > 134
-     or p_max_combo > p_right_count
-     or (p_right_count = 0 and p_max_combo <> 0)
-     or (p_right_count > 0 and p_max_combo = 0) then
-    raise exception using errcode = '22023', message = 'invalid_score_claim';
-  end if;
-
-  if p_right_count = 0 then
-    max_possible_score := 0;
-  else
-    full_runs := p_right_count / p_max_combo;
-    remainder_count := p_right_count % p_max_combo;
-    full_run_score := case
-      when p_max_combo <= 5 then p_max_combo::bigint * (p_max_combo::bigint + 9)
-      else 20::bigint * p_max_combo - 30
-    end;
-    remainder_score := case
-      when remainder_count <= 5 then remainder_count::bigint * (remainder_count::bigint + 9)
-      else 20::bigint * remainder_count - 30
-    end;
-    max_possible_score := full_runs::bigint * full_run_score + remainder_score;
-  end if;
-
-  if p_score::bigint < p_right_count::bigint * 10
-     or p_score::bigint > max_possible_score then
-    raise exception using errcode = '22023', message = 'invalid_score_claim';
-  end if;
-
-  if exists (
-    select 1 from public.scores
-    where lower(btrim(name)) = lower(clean_name)
-      and user_id <> player_id
-  ) then
-    raise exception using errcode = '23505', message = 'duplicate_player_name';
-  end if;
-
-  begin
-    insert into public.scores as existing (user_id, name, score, right_count, max_combo)
-    values (player_id, clean_name, p_score, p_right_count, p_max_combo)
-    on conflict (user_id) do update set
-      score = greatest(existing.score, excluded.score),
-      right_count = case when excluded.score > existing.score then excluded.right_count else existing.right_count end,
-      max_combo = case when excluded.score > existing.score then excluded.max_combo else existing.max_combo end,
-      updated_at = case when excluded.score > existing.score then now() else existing.updated_at end
-    returning * into saved_row;
-  exception when unique_violation then
-    -- Also handle two players claiming the same name at nearly the same time.
-    raise exception using errcode = '23505', message = 'duplicate_player_name';
-  end;
-
-  return next saved_row;
-end;
-$$;
-
-revoke all on function public.submit_score(text, integer, integer, integer) from public, anon;
-revoke all on function public.submit_score(text, integer, integer, integer) from authenticated;
-grant execute on function public.submit_score(text, integer, integer, integer) to authenticated;
+-- ---------------------------------------------------------------------------
+-- Scoring is server-authoritative. The old client-scored submit_score() has
+-- been removed from this file on purpose.
+--
+-- Run Database/server_scoring.sql AFTER this file to install:
+--   * public.game_runs
+--   * public.game_start()
+--   * public.game_answer()
+--   * public.game_finish()
+-- and to disable the legacy submit_score() path.
+-- ---------------------------------------------------------------------------
 
 create or replace function public.get_leaderboard()
 returns table (rank_no bigint, name text, score integer, is_you boolean)
