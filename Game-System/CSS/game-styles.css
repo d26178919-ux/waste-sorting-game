@@ -265,3 +265,13 @@ button{-webkit-tap-highlight-color:transparent}
 .rv{opacity:0;transform:translateY(32px);transition:opacity 1.5s cubic-bezier(.22,1,.36,1),transform 1.5s cubic-bezier(.22,1,.36,1)}
 .rv.in{opacity:1;transform:none}
 @media (prefers-reduced-motion:reduce){.rv{transform:none;transition:opacity .5s cubic-bezier(.22,1,.36,1)}}
+
+/* ===== Maintenance screen (server disabled by admin) ===== */
+body.maintenance-on{overflow:hidden}
+.maintenance-screen{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:calc(24px + env(safe-area-inset-top,0px)) 20px calc(24px + env(safe-area-inset-bottom,0px));background:radial-gradient(ellipse at 50% 28%,#123820 0,#06180d 58%,#030d08 100%);color:#f3f7ee;text-align:center;overflow:auto}
+.maintenance-screen[hidden]{display:none}
+.maintenance-inner{display:flex;flex-direction:column;align-items:center;gap:18px;width:100%;max-width:520px}
+.maintenance-code{margin:0;padding:.06em .14em .1em;font-size:clamp(5.5rem,24vw,11rem);line-height:.9;font-weight:800;letter-spacing:0;color:#f3f7ee}
+.maintenance-text{margin:0;max-width:420px;color:rgba(243,247,238,.84);font-size:1.0625rem;line-height:1.75;text-wrap:balance}
+.maintenance-reset{width:min(100%,240px);max-width:240px;margin-top:4px;padding:12px 24px;font-size:1rem}
+.maintenance-reset:focus-visible{outline:2px solid #fff;outline-offset:3px}
