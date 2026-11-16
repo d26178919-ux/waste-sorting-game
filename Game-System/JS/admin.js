@@ -9,8 +9,10 @@
   const TOKEN_KEY = 'wsg_admin_token';
   const EXPIRES_KEY = 'wsg_admin_expires_at';
   const SESSION_WARN_MS = 15 * 60 * 1000;
+  const THEME_KEY = 'wsg_theme';
   const $ = (id) => document.getElementById(id);
   const TABS = ['scores', 'banned', 'audit', 'commands', 'admins'];
+  const AUDIT_MAX_ROWS = 35;
 
   const ROLE_LABELS = { owner: 'owner', editor: 'editor', viewer: 'viewer' };
 
@@ -24,10 +26,11 @@
     weak_password: 'รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร',
     same_password: 'รหัสผ่านใหม่ต้องต่างจากรหัสเดิม',
     invalid_password: 'รหัสผ่านปัจจุบันไม่ถูกต้อง',
+    password_not_configured: 'บัญชีนี้ยังไม่มีรหัสผ่านที่ใช้งานได้ — กรุณาเปลี่ยนรหัสผ่านก่อน',
     invalid_special_password: 'รหัสผ่านพิเศษไม่ถูกต้อง',
     weak_special_password: 'รหัสผ่านพิเศษต้องยาว 4–64 ตัวอักษร',
     same_special_password: 'รหัสผ่านพิเศษใหม่ต้องต่างจากเดิม',
-    special_password_not_configured: 'ยังไม่ได้ตั้งรหัสผ่านพิเศษ — ผู้ดูแลต้องตั้งค่าในฐานข้อมูลก่อน',
+    special_password_not_configured: 'ยังไม่ได้ตั้งรหัสผ่านพิเศษ หรือค่าที่เก็บไว้เสียหาย — ต้องตั้งใหม่ด้วย SQL ก่อน',
     duplicate_player_name: 'ชื่อผู้เล่นนี้ถูกใช้แล้ว',
     duplicate_admin: 'ชื่อผู้ใช้นี้มีอยู่แล้ว',
     invalid_name: 'ชื่อต้องยาว 1–16 ตัวอักษร',
@@ -50,6 +53,8 @@
     cannot_revoke_self: 'ตัดเซสชันที่กำลังใช้งานอยู่ไม่ได้',
     cannot_disable_self: 'ปิดใช้งานบัญชีของตัวเองไม่ได้',
     last_owner: 'ต้องมี owner ที่ใช้งานอยู่อย่างน้อย 1 คน',
+    invalid_maintenance_password: 'รหัสยืนยันไม่ถูกต้อง',
+    maintenance_not_configured: 'ยังไม่ได้ตั้งรหัสยืนยันเซิร์ฟเวอร์ — กรุณาตั้งค่าในฐานข้อมูลก่อน',
     not_connected: 'ยังเชื่อมต่อฐานข้อมูลไม่สำเร็จ'
   };
 
@@ -71,7 +76,9 @@
     add_admin: 'เพิ่มผู้ดูแล',
     enable_admin: 'เปิดใช้งานผู้ดูแล',
     disable_admin: 'ปิดใช้งานผู้ดูแล',
-    reset_admin_password: 'รีเซ็ตรหัสผ่านผู้ดูแล'
+    reset_admin_password: 'รีเซ็ตรหัสผ่านผู้ดูแล',
+    maintenance_on: 'ปิดใช้งานเซิร์ฟเวอร์',
+    maintenance_off: 'เปิดใช้งานเซิร์ฟเวอร์'
   };
 
   const COMMAND_GROUPS = [
@@ -80,7 +87,7 @@
     { id: 'moderation', title: 'แบน / ปลดแบน', hint: 'จัดการผู้เล่นที่ละเมิดกติกา' },
     { id: 'runs', title: 'ตรวจสอบรอบเกม', hint: 'ตรวจ anti-bot และจัดการรอบที่ผิดปกติ' },
     { id: 'security', title: 'ความปลอดภัย', hint: 'จัดการเซสชันของผู้ดูแลระบบ' },
-    { id: 'system', title: 'ระบบ', hint: 'ภาพรวมสถิติของเกม' }
+    { id: 'system', title: 'ระบบ', hint: 'ภาพรวมสถิติและสถานะเซิร์ฟเวอร์' }
   ];
 
   const COMMANDS = [
@@ -105,7 +112,8 @@
 
     { id: 'sessions.manage', group: 'security', roles: ['owner'], label: 'จัดการเซสชัน', hint: 'ดูและตัดเซสชันของผู้ดูแล' },
 
-    { id: 'system.stats', group: 'system', roles: ['owner', 'editor', 'viewer'], label: 'สถิติระบบ', hint: 'ผู้เล่น รอบเกม และจำนวนที่ถูก flag' }
+    { id: 'system.stats', group: 'system', roles: ['owner', 'editor', 'viewer'], label: 'สถิติระบบ', hint: 'ผู้เล่น รอบเกม และจำนวนที่ถูก flag' },
+    { id: 'server.maintenance', group: 'system', roles: ['owner', 'editor'], label: 'ปิด/เปิดใช้งานเซิร์ฟเวอร์', hint: 'หยุดรับผู้เล่นชั่วคราว (ต้องใส่รหัสยืนยัน)' }
   ];
 
   const state = {
@@ -131,6 +139,7 @@
     playerSearchRows: [],
     scoreTarget: null,
     reasonResolve: null,
+    passwordRequest: null,
     runTarget: null,
     runListStatus: 'suspicious',
     runListPlayer: null,
@@ -138,6 +147,8 @@
     runListTitle: '',
     runListTotal: 0,
     sessions: [],
+    maintenance: null,
+    maintenanceBusy: false,
     expiresAt: null,
     sessionWarned: false,
     sessionWarnTimer: null,
@@ -185,6 +196,67 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* page / tab transitions                                              */
+  /* ------------------------------------------------------------------ */
+
+  function animateEnter(el, className) {
+    if (!el) return;
+    el.classList.remove(className);
+    // รีเฟลช์เพื่อให้ animation เล่นใหม่ได้แม้เปลี่ยนหน้าถี่ ๆ
+    void el.offsetWidth;
+    el.classList.add(className);
+    el.addEventListener('animationend', function onEnd(event) {
+      if (event.target !== el) return;
+      el.classList.remove(className);
+      el.removeEventListener('animationend', onEnd);
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* theme (light / dark)                                               */
+  /* ------------------------------------------------------------------ */
+
+  function currentTheme() {
+    return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  }
+
+  function applyTheme(theme, persist = true) {
+    const next = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+
+    if (persist) {
+      try { localStorage.setItem(THEME_KEY, next); } catch (error) { /* ignore */ }
+    }
+
+    const button = $('themeToggle');
+    if (button) {
+      const dark = next === 'dark';
+      const label = dark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด';
+      button.setAttribute('aria-pressed', String(dark));
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+    }
+
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', next === 'dark' ? '#09090b' : '#fafafa');
+  }
+
+  function bindTheme() {
+    applyTheme(currentTheme(), false);
+    const button = $('themeToggle');
+    if (button) {
+      button.addEventListener('click', () => {
+        applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+      });
+    }
+    window.addEventListener('storage', (event) => {
+      if (event.key === THEME_KEY) {
+        applyTheme(event.newValue === 'dark' ? 'dark' : 'light', false);
+      }
+    });
+  }
+
+  /* ------------------------------------------------------------------ */
   /* session timer (แจ้งเตือนก่อนหมดอายุ + ออกจากระบบอัตโนมัติ)          */
   /* ------------------------------------------------------------------ */
 
@@ -222,14 +294,20 @@
     const el = $('sessionTimer');
     if (!el) return;
     const remaining = state.expiresAt ? state.expiresAt - Date.now() : null;
+    const settingsEl = $('settingsSession');
     if (remaining === null || remaining <= 0) {
       el.hidden = true;
+      if (settingsEl) settingsEl.textContent = '—';
       return;
     }
     el.hidden = false;
     el.textContent = `เซสชันเหลือ ${fmtRemaining(remaining)}`;
     el.classList.toggle('warning', remaining <= SESSION_WARN_MS);
     el.title = `หมดอายุเวลา ${new Date(state.expiresAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}`;
+    if (settingsEl) {
+      settingsEl.textContent = `เหลือ ${fmtRemaining(remaining)}`;
+      settingsEl.classList.toggle('warning', remaining <= SESSION_WARN_MS);
+    }
   }
 
   function warnSession() {
@@ -438,6 +516,9 @@
     $('loginPanel').hidden = false;
     $('dashboard').hidden = true;
     $('sessionTimer').hidden = true;
+    animateEnter($('loginPanel'), 'view-enter');
+    const settingsMenu = $('settingsMenu');
+    if (settingsMenu) settingsMenu.open = false;
     resetPasswordToggles();
     setPasswordDialogMode();
     setMessage($('loginMessage'), message, type);
@@ -448,17 +529,29 @@
   function showDashboard() {
     $('loginPanel').hidden = true;
     $('dashboard').hidden = false;
+    animateEnter($('dashboard'), 'view-enter');
   }
 
   function applyAdmin(admin) {
     if (admin) state.admin = { ...(state.admin || {}), ...admin };
     const current = state.admin || {};
+    const roleLabel = ROLE_LABELS[current.role] || current.role || '—';
     $('adminName').textContent = current.username || '—';
     const roleEl = $('adminRole');
-    roleEl.textContent = ROLE_LABELS[current.role] || current.role || '—';
+    roleEl.textContent = roleLabel;
     roleEl.className = `badge ${current.role || ''}`.trim();
+    const settingsName = $('settingsAdminName');
+    if (settingsName) settingsName.textContent = current.username || '—';
+    const settingsRole = $('settingsAdminRole');
+    if (settingsRole) {
+      settingsRole.textContent = roleLabel;
+      settingsRole.className = `badge ${current.role || ''}`.trim();
+    }
+    const avatar = $('settingsAvatar');
+    if (avatar) avatar.textContent = String(current.username || '?').charAt(0).toUpperCase();
     $('adminsTab').hidden = current.role !== 'owner';
     $('specialPasswordButton').hidden = current.role !== 'owner';
+    $('maintenanceButton').hidden = !can(['owner', 'editor']);
     $('passwordWarning').hidden = !current.must_change_password;
     renderCommands();
   }
@@ -469,6 +562,32 @@
     $('averageScore').textContent = fmtNumber(Math.round(Number(stats.average_score || 0)));
     $('highestScore').textContent = fmtNumber(stats.highest_score);
     $('bannedCount').textContent = fmtNumber(stats.banned_count);
+    if (typeof stats.maintenance === 'boolean') applyMaintenance({ maintenance: stats.maintenance });
+  }
+
+  function applyMaintenance(status) {
+    if (status && typeof status.maintenance === 'boolean') {
+      state.maintenance = { ...(state.maintenance || {}), ...status };
+    }
+    const on = !!(state.maintenance && state.maintenance.maintenance);
+    const banner = $('maintenanceWarning');
+    if (banner) banner.hidden = !on || !can(['owner', 'editor']);
+    const statusEl = $('settingsServerStatus');
+    if (statusEl) {
+      statusEl.textContent = on ? 'ปิดรับผู้เล่น' : 'เปิดปกติ';
+      statusEl.className = `pill ${on ? 'danger' : 'ok'}`;
+    }
+  }
+
+  async function loadMaintenanceStatus() {
+    if (!state.token || !can(['owner', 'editor'])) return;
+    try {
+      const data = await rpc('admin_maintenance_status', { p_token: state.token });
+      applyMaintenance(data);
+    } catch (err) {
+      // ถ้ายังไม่ได้รัน SQL ส่วนนี้ อย่าทำให้ dashboard ทั้งหน้าใช้งานไม่ได้
+      console.warn('[wsg-admin] maintenance status failed', err);
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -481,11 +600,24 @@
       if (state.tab === 'commands') tab = 'scores';
       else return;
     }
+    const previous = state.tab;
+    const changed = tab !== previous;
+    const direction = TABS.indexOf(tab) >= TABS.indexOf(previous) ? 'right' : 'left';
     state.tab = tab;
     document.querySelectorAll('.tab').forEach((btn) => {
       btn.setAttribute('aria-selected', String(btn.dataset.tab === tab));
     });
-    TABS.forEach((name) => { $('tab-' + name).hidden = name !== tab; });
+    TABS.forEach((name) => {
+      const panel = $('tab-' + name);
+      const active = name === tab;
+      panel.hidden = !active;
+      if (active && changed) {
+        panel.dataset.enter = direction;
+        animateEnter(panel, 'tab-enter');
+      } else {
+        panel.classList.remove('tab-enter');
+      }
+    });
     if (tab === 'scores') return loadScores();
     if (tab === 'banned') return loadBanned();
     if (tab === 'audit') return loadAudit();
@@ -572,6 +704,8 @@
         return loadSessions();
       case 'system.stats':
         return loadSystemStats();
+      case 'server.maintenance':
+        return openMaintenanceDialog();
       default:
         return undefined;
     }
@@ -774,19 +908,28 @@
     }
     const button = $('scoreSetForm').querySelector('button[type="submit"]');
     button.disabled = true;
+    closeDialog($('scoreSetDialog'));
     try {
-      await rpc('admin_set_score', {
-        p_token: state.token,
-        p_user_id: target.user_id,
-        p_score: score,
-        p_reason: reason
-      });
-      closeDialog($('scoreSetDialog'));
+      const done = await requestPassword(
+        {
+          title: 'ตั้งคะแนนใหม่',
+          text: `ตั้งคะแนนของ ${playerLabel(target)} เป็น ${fmtNumber(score)}`,
+          okLabel: 'บันทึกคะแนน'
+        },
+        (password) => rpc('admin_set_score', {
+          p_token: state.token,
+          p_user_id: target.user_id,
+          p_score: score,
+          p_password: password,
+          p_reason: reason
+        })
+      );
       state.scoreTarget = null;
+      if (!done) return;
       toast('ตั้งคะแนนใหม่แล้ว');
       await refreshPlayerTables();
     } catch (err) {
-      fail(err, $('scoreSetMessage'));
+      fail(err, $('dashboardMessage'));
     } finally {
       button.disabled = false;
     }
@@ -831,7 +974,20 @@
     });
     if (!reason) return;
     try {
-      await rpc('admin_reset_score', { p_token: state.token, p_user_id: row.user_id, p_reason: reason });
+      const done = await requestPassword(
+        {
+          title: 'รีเซ็ตคะแนน',
+          text: `ตั้งคะแนนและสถิติของ ${playerLabel(row)} เป็น 0`,
+          okLabel: 'รีเซ็ต'
+        },
+        (password) => rpc('admin_reset_score', {
+          p_token: state.token,
+          p_user_id: row.user_id,
+          p_password: password,
+          p_reason: reason
+        })
+      );
+      if (!done) return;
       toast('รีเซ็ตคะแนนแล้ว');
       await refreshPlayerTables();
     } catch (err) {
@@ -847,7 +1003,20 @@
     });
     if (!reason) return;
     try {
-      await rpc('admin_delete_score', { p_token: state.token, p_user_id: row.user_id, p_reason: reason });
+      const done = await requestPassword(
+        {
+          title: 'ลบคะแนน',
+          text: `ลบ ${playerLabel(row)} ออกจากอันดับถาวร`,
+          okLabel: 'ลบ'
+        },
+        (password) => rpc('admin_delete_score', {
+          p_token: state.token,
+          p_user_id: row.user_id,
+          p_password: password,
+          p_reason: reason
+        })
+      );
+      if (!done) return;
       toast('ลบคะแนนแล้ว');
       await refreshPlayerTables();
     } catch (err) {
@@ -856,10 +1025,20 @@
   }
 
   async function unbanPlayer(row) {
-    const ok = await confirmAction('ปลดแบนผู้เล่น', `ปลดแบน ${playerLabel(row)} ใช่หรือไม่?`, 'ปลดแบน');
-    if (!ok) return;
     try {
-      await rpc('admin_unban_player', { p_token: state.token, p_user_id: row.user_id });
+      const done = await requestPassword(
+        {
+          title: 'ปลดแบนผู้เล่น',
+          text: `ปลดแบน ${playerLabel(row)}`,
+          okLabel: 'ปลดแบน'
+        },
+        (password) => rpc('admin_unban_player', {
+          p_token: state.token,
+          p_user_id: row.user_id,
+          p_password: password
+        })
+      );
+      if (!done) return;
       toast('ปลดแบนแล้ว');
       await refreshPlayerTables();
     } catch (err) {
@@ -1141,6 +1320,7 @@
       grid.append(detailItem('คะแนนเฉลี่ย', fmtNumber(data.average_score)));
       grid.append(detailItem('คะแนนสูงสุด', fmtNumber(data.highest_score)));
       grid.append(detailItem('ผู้เล่นที่ถูกแบน', fmtNumber(data.banned_count)));
+      grid.append(detailItem('สถานะเซิร์ฟเวอร์', data.maintenance ? 'ปิดรับผู้เล่น' : 'เปิดใช้งานปกติ'));
       grid.append(detailItem('ผู้ดูแลที่ใช้งาน', fmtNumber(data.admin_count)));
       grid.append(detailItem('รอบทั้งหมด', fmtNumber(data.total_runs)));
       grid.append(detailItem('รอบวันนี้', fmtNumber(data.runs_today)));
@@ -1155,6 +1335,57 @@
       body.textContent = '';
       body.append(make('p', 'result-empty', errorMessage(err)));
       fail(err, $('dashboardMessage'));
+    }
+  }
+
+  function openMaintenanceDialog() {
+    const on = !!(state.maintenance && state.maintenance.maintenance);
+    $('maintenanceForm').reset();
+    resetPasswordToggles();
+    setMessage($('maintenanceMessage'), '');
+    $('maintenanceDialogStatus').textContent = on
+      ? 'สถานะปัจจุบัน: ปิดรับผู้เล่นอยู่ — กรอกรหัสยืนยันเพื่อเปิดใช้งานเซิร์ฟเวอร์'
+      : 'สถานะปัจจุบัน: เปิดใช้งานปกติ — กรอกรหัสยืนยันเพื่อปิดรับผู้เล่นชั่วคราว';
+    const submit = $('maintenanceSubmit');
+    submit.textContent = on ? 'เปิดใช้งานเซิร์ฟเวอร์' : 'ปิดใช้งานเซิร์ฟเวอร์';
+    submit.className = on ? 'button primary' : 'button danger';
+    openDialog($('maintenanceDialog'));
+    $('maintenancePassword').focus();
+  }
+
+  async function onMaintenanceSubmit(event) {
+    event.preventDefault();
+    if (state.maintenanceBusy) return;
+    const password = $('maintenancePassword').value;
+    if (!password) {
+      setMessage($('maintenanceMessage'), 'กรุณากรอกรหัสยืนยัน', 'error');
+      $('maintenancePassword').focus();
+      return;
+    }
+
+    const currentlyOn = !!(state.maintenance && state.maintenance.maintenance);
+    const target = !currentlyOn;
+    const button = $('maintenanceSubmit');
+    state.maintenanceBusy = true;
+    button.disabled = true;
+    setMessage($('maintenanceMessage'), 'กำลังบันทึก…', 'info');
+    try {
+      const data = await rpc('admin_set_maintenance', {
+        p_token: state.token,
+        p_enabled: target,
+        p_password: password
+      });
+      applyMaintenance({ ...(data || {}), maintenance: target });
+      $('maintenanceForm').reset();
+      closeDialog($('maintenanceDialog'));
+      toast(target
+        ? 'ปิดใช้งานเซิร์ฟเวอร์แล้ว ผู้เล่นจะเห็นหน้าปิดปรับปรุงชั่วคราว'
+        : 'เปิดใช้งานเซิร์ฟเวอร์แล้ว ผู้เล่นกลับมาเล่นได้ตามปกติ');
+    } catch (err) {
+      fail(err, $('maintenanceMessage'));
+    } finally {
+      state.maintenanceBusy = false;
+      button.disabled = false;
     }
   }
 
@@ -1292,13 +1523,26 @@
     if (action === 'ban') return openBanDialog(userId, name);
 
     if (action === 'unban') {
-      const ok = await confirmAction('ปลดแบนผู้เล่น', `ปลดแบน ${name || 'ผู้เล่นนี้'} ใช่หรือไม่?`, 'ปลดแบน');
-      if (!ok) return;
-      return runAction(
-        () => rpc('admin_unban_player', { p_token: state.token, p_user_id: userId }),
-        'ปลดแบนแล้ว',
-        state.tab === 'banned' ? loadBanned : loadScores
-      );
+      try {
+        const done = await requestPassword(
+          {
+            title: 'ปลดแบนผู้เล่น',
+            text: `ปลดแบน ${name || 'ผู้เล่นนี้'}`,
+            okLabel: 'ปลดแบน'
+          },
+          (password) => rpc('admin_unban_player', {
+            p_token: state.token,
+            p_user_id: userId,
+            p_password: password
+          })
+        );
+        if (!done) return;
+        toast('ปลดแบนแล้ว');
+        await (state.tab === 'banned' ? loadBanned() : loadScores());
+      } catch (err) {
+        fail(err, $('dashboardMessage'));
+      }
+      return;
     }
 
     if (action === 'reset') {
@@ -1375,6 +1619,13 @@
   /* audit                                                               */
   /* ------------------------------------------------------------------ */
 
+  // เก็บบรรทัดในบันทึกกิจกรรมไว้ไม่เกิน AUDIT_MAX_ROWS
+  // ถ้าเกิน ให้ลบแถวล่างสุด (รายการเก่าสุด) ทิ้ง
+  function trimAuditRows() {
+    const body = $('auditBody');
+    while (body.rows.length > AUDIT_MAX_ROWS) body.deleteRow(-1);
+  }
+
   async function loadAudit() {
     $('auditBody').replaceChildren(loadingRow(4));
     try {
@@ -1396,6 +1647,7 @@
         tr.append(cell(summary));
         body.append(tr);
       });
+      trimAuditRows();
     } catch (err) {
       $('auditBody').replaceChildren(emptyRow(4, 'โหลดข้อมูลไม่สำเร็จ'));
       fail(err, $('dashboardMessage'));
@@ -1478,9 +1730,9 @@
   function openResetAdminDialog(row) {
     state.resetAdminTarget = row;
     $('resetAdminTargetText').textContent = `ตั้งรหัสผ่านชั่วคราวใหม่ให้ ${row.username}`;
-    resetPasswordToggles();
     setMessage($('resetAdminMessage'), '');
     $('resetAdminPassword').value = '';
+    resetPasswordToggles();
     openDialog($('resetAdminDialog'));
     $('resetAdminPassword').focus();
   }
@@ -1505,6 +1757,70 @@
     state.confirmResolve = null;
     closeDialog($('confirmDialog'));
     if (resolve) resolve(value);
+  }
+
+  /* ---- password confirmation for destructive actions ---- */
+
+  function isInvalidPassword(err) {
+    return String((err && (err.message || err.error_description)) || '').includes('invalid_password');
+  }
+
+  function requestPassword({ title, text, okLabel = 'ยืนยัน', danger = true }, action) {
+    return new Promise((resolve, reject) => {
+      state.passwordRequest = { resolve, reject, action };
+      $('actionPasswordTitle').textContent = title;
+      $('actionPasswordText').textContent = text;
+      $('actionPasswordSubmit').textContent = okLabel;
+      $('actionPasswordSubmit').className = `button ${danger ? 'danger' : 'primary'}`;
+      $('actionPasswordForm').reset();
+      resetPasswordToggles();
+      setMessage($('actionPasswordMessage'), '');
+      openDialog($('actionPasswordDialog'));
+      $('actionPasswordInput').focus();
+    });
+  }
+
+  function cancelPasswordRequest() {
+    const request = state.passwordRequest;
+    state.passwordRequest = null;
+    closeDialog($('actionPasswordDialog'));
+    if (request) request.resolve(null);
+  }
+
+  async function onActionPasswordSubmit(event) {
+    event.preventDefault();
+    const request = state.passwordRequest;
+    if (!request) return;
+    const input = $('actionPasswordInput');
+    const password = input.value;
+    if (!password) {
+      setMessage($('actionPasswordMessage'), 'กรุณากรอกรหัสผ่าน', 'error');
+      input.focus();
+      return;
+    }
+    const button = $('actionPasswordSubmit');
+    const cancel = $('actionPasswordCancel');
+    button.disabled = true;
+    cancel.disabled = true;
+    try {
+      const result = await request.action(password);
+      state.passwordRequest = null;
+      closeDialog($('actionPasswordDialog'));
+      request.resolve(result);
+    } catch (err) {
+      if (isInvalidPassword(err)) {
+        setMessage($('actionPasswordMessage'), 'รหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง', 'error');
+        input.value = '';
+        input.focus();
+        return;
+      }
+      state.passwordRequest = null;
+      closeDialog($('actionPasswordDialog'));
+      request.reject(err);
+    } finally {
+      button.disabled = false;
+      cancel.disabled = false;
+    }
   }
 
   function openPasswordDialog() {
@@ -1552,7 +1868,26 @@
     $('logoutButton').addEventListener('click', onLogout);
     $('refreshButton').addEventListener('click', () => switchTab(state.tab));
     $('passwordButton').addEventListener('click', openPasswordDialog);
+    $('maintenanceButton').addEventListener('click', openMaintenanceDialog);
     $('passwordWarningBtn').addEventListener('click', openPasswordDialog);
+    $('maintenanceWarningBtn').addEventListener('click', openMaintenanceDialog);
+    $('maintenanceForm').addEventListener('submit', onMaintenanceSubmit);
+    $('maintenanceCancel').addEventListener('click', () => closeDialog($('maintenanceDialog')));
+
+    // Settings menu (top-right): close after choosing an item,
+    // on outside click, or with Escape.
+    const settingsMenu = $('settingsMenu');
+    if (settingsMenu) {
+      settingsMenu.addEventListener('click', (event) => {
+        if (event.target.closest('.settings-item')) settingsMenu.open = false;
+      });
+      document.addEventListener('click', (event) => {
+        if (settingsMenu.open && !settingsMenu.contains(event.target)) settingsMenu.open = false;
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && settingsMenu.open) settingsMenu.open = false;
+      });
+    }
 
     document.querySelectorAll('.tab').forEach((btn) => {
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -1608,8 +1943,8 @@
     $('auditRefresh').addEventListener('click', loadAudit);
     $('addAdminButton').addEventListener('click', () => {
       $('adminForm').reset();
-      resetPasswordToggles();
-      setMessage($('adminMessage'), '');
+        resetPasswordToggles();
+        setMessage($('adminMessage'), '');
       openDialog($('adminDialog'));
       $('adminUsername').focus();
     });
@@ -1685,6 +2020,13 @@
       settleConfirm(false);
     });
 
+    $('actionPasswordForm').addEventListener('submit', onActionPasswordSubmit);
+    $('actionPasswordCancel').addEventListener('click', cancelPasswordRequest);
+    $('actionPasswordDialog').addEventListener('cancel', (event) => {
+      event.preventDefault();
+      cancelPasswordRequest();
+    });
+
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible' || !state.expiresAt) return;
       if (state.expiresAt <= Date.now()) expireSession();
@@ -1727,6 +2069,7 @@
       setMessage($('loginMessage'), '');
       applyAdmin(result);
       showDashboard();
+      await loadMaintenanceStatus();
       await switchTab('scores');
       if (result.must_change_password) openPasswordDialog();
     } catch (err) {
@@ -1865,18 +2208,28 @@
     }
     const button = $('banForm').querySelector('button[type="submit"]');
     button.disabled = true;
+    const target = state.banTarget;
+    closeDialog($('banDialog'));
     try {
-      await rpc('admin_ban_player', {
-        p_token: state.token,
-        p_user_id: state.banTarget,
-        p_reason: reason
-      });
-      closeDialog($('banDialog'));
-      toast('แบนผู้เล่นแล้ว');
+      const done = await requestPassword(
+        {
+          title: 'แบนผู้เล่น',
+          text: 'ผู้เล่นจะถูกบล็อกไม่ให้บันทึกคะแนนจนกว่าจะปลดแบน',
+          okLabel: 'แบน'
+        },
+        (password) => rpc('admin_ban_player', {
+          p_token: state.token,
+          p_user_id: target,
+          p_password: password,
+          p_reason: reason
+        })
+      );
       state.banTarget = null;
+      if (!done) return;
+      toast('แบนผู้เล่นแล้ว');
       await refreshPlayerTables();
     } catch (err) {
-      fail(err, $('banMessage'));
+      fail(err, $('dashboardMessage'));
     } finally {
       button.disabled = false;
     }
@@ -2020,6 +2373,7 @@
     });
     applyAdmin(data && data.admin);
     applyStats(data && data.stats);
+    await loadMaintenanceStatus();
     if (data && data.expires_at) {
       scheduleSession(data.expires_at);
       persistSession(state.token, data.expires_at);
@@ -2030,6 +2384,7 @@
   }
 
   function init() {
+    bindTheme();
     bindEvents();
     bindPasswordToggles();
 
