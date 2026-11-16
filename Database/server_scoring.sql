@@ -380,6 +380,31 @@ $$;
 revoke all on function public.game_make_items(text[]) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
+-- 4.1) ตรวจว่าผู้ดูแลปิดรับผู้เล่นอยู่หรือไม่
+--      ตาราง game_server_settings สร้างโดย Database/admin_system.sql
+--      ถ้ายังไม่ได้รันไฟล์นั้น ให้ถือว่าเซิร์ฟเวอร์เปิดตามปกติ
+-- ---------------------------------------------------------------------------
+create or replace function public.game_server_closed()
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if to_regclass('public.game_server_settings') is null then
+    return false;
+  end if;
+  return coalesce(
+    (select s.maintenance from public.game_server_settings s where s.id = true),
+    false
+  );
+end;
+$$;
+
+revoke all on function public.game_server_closed() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- 5) เริ่มรอบใหม่
 --    คืน run_id + ชื่อขยะชิ้นแรก + เวลาจบ (server time)
 --    จำกัด: เว้นอย่างน้อย 3 วินาทีระหว่างการเริ่มรอบ และไม่เกิน 30 รอบ/ชั่วโมง
@@ -400,6 +425,11 @@ declare
 begin
   if v_uid is null then
     raise exception using errcode = '28000', message = 'authentication_required';
+  end if;
+
+  -- ผู้ดูแลปิดรับผู้เล่นชั่วคราว
+  if public.game_server_closed() then
+    raise exception using errcode = '55000', message = 'maintenance_mode';
   end if;
 
   -- serialize การเริ่มรอบของผู้เล่นคนเดียวกัน เพื่อไม่ให้ยิงพร้อมกันแล้วเลี่ยง rate limit
@@ -503,6 +533,9 @@ declare
 begin
   if v_uid is null then
     raise exception using errcode = '28000', message = 'authentication_required';
+  end if;
+  if public.game_server_closed() then
+    raise exception using errcode = '55000', message = 'maintenance_mode';
   end if;
   if v_bin not in ('green', 'yellow', 'blue', 'red') then
     raise exception using errcode = '22023', message = 'invalid_bin';
