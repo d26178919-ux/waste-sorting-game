@@ -4,12 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <meta name="theme-color" content="#082016">
+  <meta name="theme-color" content="#fafafa">
   <title>ระบบหลังบ้าน | เกมแยกขยะ</title>
-  <link rel="stylesheet" href="../CSS/admin.css?v=3">
+  <script>
+    (() => {
+      try {
+        const saved = localStorage.getItem('wsg_theme');
+        const dark = saved === 'dark' || (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (error) { /* ignore */ }
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../CSS/admin.css?v=15">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="../JS/database-config.js"></script>
-  <script src="../JS/admin.js?v=3" defer></script>
+  <script src="../JS/admin.js?v=13" defer></script>
 </head>
 <body>
   <main class="shell">
@@ -24,7 +36,7 @@
         <label for="password">รหัสผ่าน</label>
         <div class="password-field">
           <input id="password" name="password" type="password" autocomplete="current-password" minlength="1" maxlength="128" required>
-          <button class="password-toggle" type="button" data-toggle-password="password" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="password" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div>
         <button class="button primary" type="submit">เข้าสู่ระบบ</button>
       </form>
@@ -45,10 +57,49 @@
           </p>
         </div>
         <div class="top-actions">
-          <button id="refreshButton" class="button secondary" type="button">โหลดข้อมูลใหม่</button>
-          <button id="specialPasswordButton" class="button secondary" type="button" hidden>ตั้งรหัสพิเศษ</button>
-          <button id="passwordButton" class="button secondary" type="button">เปลี่ยนรหัสผ่าน</button>
-          <button id="logoutButton" class="button secondary" type="button">ออกจากระบบ</button>
+          <button id="themeToggle" class="button secondary theme-toggle" type="button" aria-label="สลับเป็นโหมดมืด" aria-pressed="false" title="สลับโหมดมืด/สว่าง">
+            <span class="sr-only">สลับโหมดมืด/สว่าง</span>
+          </button>
+          <details id="settingsMenu" class="settings-menu">
+            <summary class="button secondary settings-trigger" aria-haspopup="menu" aria-controls="settingsPanel">
+              ตั้งค่า
+            </summary>
+            <div id="settingsPanel" class="settings-panel" role="menu" aria-label="ตั้งค่าและจัดการบัญชี">
+              <div class="settings-account">
+                <span id="settingsAvatar" class="settings-avatar" aria-hidden="true">A</span>
+                <div>
+                  <strong id="settingsAdminName">—</strong>
+                  <span id="settingsAdminRole" class="badge">—</span>
+                </div>
+              </div>
+
+              <div class="settings-status">
+                <span>เซสชัน</span>
+                <span id="settingsSession" class="settings-session">—</span>
+              </div>
+
+              <p class="settings-label" role="presentation">การทำงาน</p>
+              <button id="refreshButton" class="settings-item" type="button" role="menuitem">โหลดข้อมูลใหม่</button>
+              <button id="maintenanceButton" class="settings-item" type="button" role="menuitem" hidden>ปิด/เปิดใช้งานเซิร์ฟเวอร์</button>
+              <button id="specialPasswordButton" class="settings-item" type="button" role="menuitem" hidden>ตั้งรหัสพิเศษ</button>
+              <button id="passwordButton" class="settings-item" type="button" role="menuitem">เปลี่ยนรหัสผ่าน</button>
+
+              <div class="settings-sep" role="separator"></div>
+              <div class="settings-status">
+                <span>สถานะเซิร์ฟเวอร์</span>
+                <span id="settingsServerStatus" class="pill ok">เปิดปกติ</span>
+              </div>
+
+              <div class="settings-sep" role="separator"></div>
+              <p class="settings-label" role="presentation">ลิงก์</p>
+              <a class="settings-item" href="game-page.html" target="_blank" rel="noopener" role="menuitem">
+                เปิดหน้าเกม <span class="settings-hint">แท็บใหม่</span>
+              </a>
+
+              <div class="settings-sep" role="separator"></div>
+              <button id="logoutButton" class="settings-item danger" type="button" role="menuitem">ออกจากระบบ</button>
+            </div>
+          </details>
         </div>
       </header>
 
@@ -57,6 +108,11 @@
       <div id="passwordWarning" class="warning" role="alert" hidden>
         <span>คุณยังไม่ได้เปลี่ยนรหัสผ่าน ควรเปลี่ยนก่อนใช้งานจริง</span>
         <button id="passwordWarningBtn" class="link-button" type="button">เปลี่ยนรหัสผ่านเดี๋ยวนี้</button>
+      </div>
+
+      <div id="maintenanceWarning" class="warning" role="alert" hidden>
+        <span>ขณะนี้ปิดรับผู้เล่นอยู่ — หน้าเกมของผู้เล่นจะแสดงหน้าปิดปรับปรุงชั่วคราว</span>
+        <button id="maintenanceWarningBtn" class="link-button" type="button">เปิดใช้งานเซิร์ฟเวอร์</button>
       </div>
 
       <div class="stats" aria-label="สถิติ">
@@ -145,7 +201,7 @@
       <!-- ---------- Audit ---------- -->
       <section id="tab-audit" class="panel table-panel" role="tabpanel" aria-labelledby="auditTitle" hidden>
         <div class="table-heading">
-          <div><h2 id="auditTitle">บันทึกกิจกรรม</h2><p class="muted">100 รายการล่าสุด</p></div>
+          <div><h2 id="auditTitle">บันทึกกิจกรรม</h2><p class="muted">35 รายการล่าสุด</p></div>
           <div class="table-tools"><button id="auditRefresh" class="button secondary" type="button">โหลดใหม่</button></div>
         </div>
         <div class="table-scroll">
@@ -206,6 +262,24 @@
   </main>
 
   <!-- ================= Dialogs ================= -->
+  <dialog id="maintenanceDialog" class="dialog" aria-labelledby="maintenanceDialogTitle">
+    <form id="maintenanceForm" novalidate>
+      <h2 id="maintenanceDialogTitle">ปิด/เปิดใช้งานเซิร์ฟเวอร์</h2>
+      <p id="maintenanceDialogStatus" class="muted">กำลังตรวจสอบสถานะ…</p>
+      <div class="field-row"><label for="maintenancePassword">รหัสยืนยัน</label>
+        <div class="password-field">
+          <input id="maintenancePassword" type="password" autocomplete="off" maxlength="128" required>
+          <button class="password-toggle" type="button" data-toggle-password="maintenancePassword" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
+        </div>
+        <small class="muted">ต้องใช้รหัสยืนยันของระบบ</small></div>
+      <p id="maintenanceMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="maintenanceCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button id="maintenanceSubmit" class="button danger" type="submit">ยืนยัน</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="passwordDialog" class="dialog" aria-labelledby="passwordDialogTitle">
     <form id="passwordForm" novalidate>
       <h2 id="passwordDialogTitle">เปลี่ยนรหัสผ่าน</h2>
@@ -213,22 +287,22 @@
       <div class="field-row"><label for="currentPassword">รหัสผ่านปัจจุบัน</label>
         <div class="password-field">
           <input id="currentPassword" type="password" autocomplete="current-password" required>
-          <button class="password-toggle" type="button" data-toggle-password="currentPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="currentPassword" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <div class="field-row"><label for="newPassword">รหัสผ่านใหม่</label>
         <div class="password-field">
           <input id="newPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
-          <button class="password-toggle" type="button" data-toggle-password="newPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="newPassword" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <div class="field-row"><label for="confirmPassword">ยืนยันรหัสผ่านใหม่</label>
         <div class="password-field">
           <input id="confirmPassword" type="password" autocomplete="new-password" minlength="8" maxlength="128" required>
-          <button class="password-toggle" type="button" data-toggle-password="confirmPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="confirmPassword" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <div class="field-row"><label for="specialPassword">รหัสผ่านพิเศษ</label>
         <div class="password-field">
           <input id="specialPassword" type="password" autocomplete="off" maxlength="64" required>
-          <button class="password-toggle" type="button" data-toggle-password="specialPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="specialPassword" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div>
         <small class="muted">ใช้ยืนยันสิทธิ์ในการเปลี่ยนรหัสผ่าน</small></div>
       <p id="passwordMessage" class="message" role="status" aria-live="polite"></p>
@@ -246,22 +320,22 @@
       <div class="field-row"><label for="specialCurrentPassword">รหัสผ่านปัจจุบัน</label>
         <div class="password-field">
           <input id="specialCurrentPassword" type="password" autocomplete="current-password" required>
-          <button class="password-toggle" type="button" data-toggle-password="specialCurrentPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="specialCurrentPassword" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <div class="field-row"><label for="currentSpecial">รหัสผ่านพิเศษปัจจุบัน</label>
         <div class="password-field">
           <input id="currentSpecial" type="password" autocomplete="off" maxlength="64" required>
-          <button class="password-toggle" type="button" data-toggle-password="currentSpecial" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="currentSpecial" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <div class="field-row"><label for="newSpecial">รหัสผ่านพิเศษใหม่</label>
         <div class="password-field">
           <input id="newSpecial" type="password" autocomplete="off" minlength="4" maxlength="64" required>
-          <button class="password-toggle" type="button" data-toggle-password="newSpecial" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="newSpecial" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <div class="field-row"><label for="confirmSpecial">ยืนยันรหัสผ่านพิเศษใหม่</label>
         <div class="password-field">
           <input id="confirmSpecial" type="password" autocomplete="off" minlength="4" maxlength="64" required>
-          <button class="password-toggle" type="button" data-toggle-password="confirmSpecial" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="confirmSpecial" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <p id="specialPasswordMessage" class="message" role="status" aria-live="polite"></p>
       <div class="dialog-actions">
@@ -308,7 +382,7 @@
       <div class="field-row"><label for="adminPassword">รหัสผ่านชั่วคราว</label>
         <div class="password-field">
           <input id="adminPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
-          <button class="password-toggle" type="button" data-toggle-password="adminPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="adminPassword" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <div class="field-row"><label for="adminRoleSelect">บทบาท</label>
         <select id="adminRoleSelect">
@@ -331,7 +405,7 @@
       <div class="field-row"><label for="resetAdminPassword">รหัสผ่านชั่วคราวใหม่</label>
         <div class="password-field">
           <input id="resetAdminPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required>
-          <button class="password-toggle" type="button" data-toggle-password="resetAdminPassword" aria-label="แสดงรหัสผ่าน" aria-pressed="false">ดู</button>
+          <button class="password-toggle" type="button" data-toggle-password="resetAdminPassword" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
         </div></div>
       <p id="resetAdminMessage" class="message" role="status" aria-live="polite"></p>
       <div class="dialog-actions">
@@ -410,6 +484,25 @@
       <button id="confirmCancel" class="button secondary" type="button">ยกเลิก</button>
       <button id="confirmOk" class="button danger" type="button">ยืนยัน</button>
     </div>
+  </dialog>
+
+  <dialog id="actionPasswordDialog" class="dialog" aria-labelledby="actionPasswordTitle">
+    <form id="actionPasswordForm" novalidate>
+      <h2 id="actionPasswordTitle">ยืนยันด้วยรหัสผ่าน</h2>
+      <p id="actionPasswordText" class="muted"></p>
+      <div class="field-row">
+        <label for="actionPasswordInput">รหัสผ่านของบัญชีคุณ</label>
+        <div class="password-field">
+          <input id="actionPasswordInput" type="password" autocomplete="current-password" required>
+          <button class="password-toggle" type="button" data-toggle-password="actionPasswordInput" aria-pressed="false" aria-label="แสดงรหัสผ่าน">ดู</button>
+        </div>
+      </div>
+      <p id="actionPasswordMessage" class="message" role="status" aria-live="polite"></p>
+      <div class="dialog-actions">
+        <button id="actionPasswordCancel" class="button secondary" type="button">ยกเลิก</button>
+        <button id="actionPasswordSubmit" class="button danger" type="submit">ยืนยัน</button>
+      </div>
+    </form>
   </dialog>
 
   <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
