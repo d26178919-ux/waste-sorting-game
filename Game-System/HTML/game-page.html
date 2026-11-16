@@ -18,10 +18,20 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- CSS styles -->
-<link rel="stylesheet" href="../CSS/game-styles.css?v=2">
+<link rel="stylesheet" href="../CSS/game-styles.css?v=5">
 </head>
 <!-- HTML page structure -->
 <body class="flex flex-col items-center">
+
+<!-- Maintenance screen (shown when the admin disables the server) -->
+<div id="maintenance" class="maintenance-screen" hidden role="alertdialog" aria-modal="true" aria-labelledby="maintenanceTitle" aria-describedby="maintenanceText">
+  <div class="maintenance-inner">
+    <p class="maintenance-code" aria-hidden="true">503</p>
+    <h1 id="maintenanceTitle" class="sr-only">ปิดปรับปรุงชั่วคราว</h1>
+    <p id="maintenanceText" class="maintenance-text">ระบบถูกปิดใช้งานชั่วคราวเนื่องจากเกิดเหตุขัดข้องกรุณารอซักครู่</p>
+    <button id="maintenanceReset" class="cta maintenance-reset" type="button">รีเซ็ต</button>
+  </div>
+</div>
 
 <div id="intro" class="intro-screen" role="dialog" aria-label="วิดีโอแนะนำเกม">
   <div class="intro-fallback" aria-hidden="true"><img src="../../Image&Video/Image/dnature.png" alt=""></div>
@@ -192,6 +202,6 @@
 </dialog>
 
 <!-- JavaScript game behavior -->
-<script src="../JS/game-logic.js?v=2"></script>
+<script src="../JS/game-logic.js?v=3"></script>
 </body>
 </html>
