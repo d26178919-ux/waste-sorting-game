@@ -200,6 +200,7 @@ function renderWasteArt(name){
 const BIN_TH={green:'ถังเขียว',yellow:'ถังเหลือง',blue:'ถังฟ้า',red:'ถังแดง'};
 const $=id=>document.getElementById(id);
 let st,cur,selected=false,timer,nextTimer=0,dbClient=null,starting=false;
+let maintenanceOn=false;
 let best=0;try{best=+localStorage.getItem('wsg_best')||0}catch(e){}
 
 function show(id){document.body.classList.toggle('game-over',id==='end');['start','game','end'].forEach(x=>{const e=$(x);e.classList.add('hidden');e.classList.remove('flex')});$(id).classList.remove('hidden');if(id!=='start')$(id).classList.add('flex')}
@@ -357,6 +358,7 @@ async function drop(bin){
     st.answering=false;
     const raw=String((e&&e.message)||'');
     if(raw.includes('answers_too_fast'))return;
+    if(raw.includes('maintenance_mode')){showMaintenance();return}
     if(raw.includes('invalid_run')){end();return}
     if(raw.includes('game_items_not_seeded')){say('ยังไม่ได้เติมรายการขยะในฐานข้อมูล — รัน Database/server_scoring.sql ใหม่','var(--bad)');return}
     if(raw.includes('player_banned')){say('บัญชีนี้ถูกระงับการเล่น','var(--bad)');end();return}
@@ -369,6 +371,7 @@ async function drop(bin){
 }
 async function start(){
   if(starting)return;
+  if(maintenanceOn){showMaintenance();return}
   starting=true;
   clearTimeout(nextTimer);nextTimer=0;clearInterval(timer);
   sound.init();
@@ -402,6 +405,7 @@ async function start(){
     console.error('[wsg] game_start failed',e);
     const raw=String((e&&e.message)||'');
     let msg='เริ่มเกมไม่สำเร็จ ลองใหม่อีกครั้ง';
+    if(raw.includes('maintenance_mode')){showMaintenance();return}
     if(raw.includes('player_banned'))msg='บัญชีนี้ถูกระงับการเล่น';
     else if(raw.includes('rate_limited'))msg='เริ่มรอบถี่เกินไป (จำกัด 30 รอบ/ชั่วโมง) รอสักครู่แล้วลองใหม่';
     else if(raw.includes('too_many_requests'))msg='เพิ่งเริ่มรอบไปหมาด ๆ รอ 3 วินาทีแล้วลองใหม่';
@@ -421,6 +425,52 @@ function end(){
   if(st.score>=100)celebrate({disableForReducedMotion:true,particleCount:150,spread:90,origin:{y:.6}});
   show('end');if(window.lbReset)window.lbReset();
 }
+
+/* ===== Maintenance mode (server disabled by admin) ===== */
+function showMaintenance(message){
+  const el=$('maintenance');if(!el)return;
+  const first=!maintenanceOn;
+  maintenanceOn=true;
+  if(st&&!st.over){try{end()}catch(e){}}
+  const text=$('maintenanceText');
+  if(text&&message)text.textContent=message;
+  document.body.classList.add('maintenance-on');
+  el.hidden=false;
+  if(first){
+    const btn=$('maintenanceReset');
+    if(btn)setTimeout(()=>btn.focus(),0);
+  }
+}
+function hideMaintenance(){
+  if(!maintenanceOn)return;
+  maintenanceOn=false;
+  document.body.classList.remove('maintenance-on');
+  const el=$('maintenance');if(el)el.hidden=true;
+}
+async function refreshServerStatus(){
+  try{
+    if(!dbClient){const connection=await window.supabaseReady;dbClient=connection&&connection.client}
+    if(!dbClient)return;
+    const {data,error}=await dbClient.rpc('game_server_status');
+    if(error){
+      // ยังไม่ได้ติดตั้งฟังก์ชันสถานะ (รันชุด SQL เก่า) หรือเน็ตสะดุด
+      // ถ้ากำลังแสดงหน้า maintenance อยู่ ให้คงไว้จนกว่าจะเช็กสำเร็จ
+      if(!maintenanceOn)console.warn('[wsg] server status check failed',error);
+      return;
+    }
+    if(data&&data.maintenance===true)showMaintenance(data.message);
+    else hideMaintenance();
+  }catch(e){console.warn('[wsg] server status check failed',e)}
+}
+(function initMaintenance(){
+  const btn=$('maintenanceReset');
+  if(btn)btn.addEventListener('click',()=>{window.location.reload()});
+  const recheck=()=>{if(document.visibilityState==='visible')refreshServerStatus()};
+  window.setInterval(recheck,20000);
+  document.addEventListener('visibilitychange',recheck);
+  window.addEventListener('load',refreshServerStatus);
+  refreshServerStatus();
+})();
 
 /* Velaris: animated simplex-noise gradient cover (WebGL) */
 (function(){
