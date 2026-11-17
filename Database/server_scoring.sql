@@ -1,23 +1,4 @@
--- ===========================================================================
---  Server-authoritative scoring — Waste Sorting Game
---  รันหลัง Database/setup.sql
---  (ถ้าใช้ระบบแอดมิน ให้รัน Database/admin_system.sql ต่อได้เลย)
---  ไฟล์นี้รันซ้ำได้ (idempotent)
---
---  หลักการ:
---   * server สร้างลำดับถังของรอบนั้นเอง (game_start)
---   * server เก็บ mapping ขยะ -> ถังไว้ในตาราง game_items ซึ่ง client อ่านไม่ได้
---     client จึงได้แค่ "ชื่อขยะ" ที่จะโชว์ ไม่ได้รู้ว่าต้องทิ้งถังไหน
---   * client ส่งได้แค่ "ถังที่เลือก" ต่อข้อ (game_answer)
---   * server เป็นคนคิดคะแนน / คอมโบ / ชีวิต / เวลาเองทั้งหมด
---   * client ส่งตัวเลขคะแนนเข้ามาไม่ได้อีกต่อไป (submit_score ถูกปิด)
---   * ชื่อผู้เล่นยังมาจาก client แต่ถูก validate และกันชื่อซ้ำที่ server
---   * จำกัดการเริ่มรอบ (cooldown + ต่อชั่วโมง) และ flag รอบที่จังหวะตอบผิดมนุษย์
--- ===========================================================================
 
--- ---------------------------------------------------------------------------
--- 1) ตารางรอบเกม
--- ---------------------------------------------------------------------------
 create table if not exists public.game_runs (
   id             uuid primary key default gen_random_uuid(),
   user_id        uuid not null references auth.users(id) on delete cascade,
@@ -46,7 +27,6 @@ create table if not exists public.game_runs (
   created_at     timestamptz not null default now()
 );
 
--- ของเดิมที่สร้างไว้ก่อนมี anti-bot: เติมคอลัมน์ที่ยังไม่มี
 alter table public.game_runs
   add column if not exists items text[],
   add column if not exists player_name text,
@@ -57,7 +37,6 @@ alter table public.game_runs
   add column if not exists suspicious boolean not null default false,
   add column if not exists flag_reason text;
 
--- เติมชื่อผู้เล่นย้อนหลังให้รอบเก่าที่เคยบันทึกไว้ (ถ้ามีแถวคะแนนอยู่)
 update public.game_runs r
    set player_name = s.name
   from public.scores s
@@ -75,20 +54,14 @@ create index if not exists game_runs_suspicious_idx
   where suspicious;
 
 alter table public.game_runs enable row level security;
--- เข้าถึงได้ทาง RPC (security definer) เท่านั้น
 revoke all on public.game_runs from public, anon, authenticated;
 
--- ---------------------------------------------------------------------------
--- 2) mapping ขยะ -> ถัง (server-only)
---    client อ่านตารางนี้ไม่ได้; ส่งให้ client แค่ชื่อขยะทีละชิ้น
--- ---------------------------------------------------------------------------
 create table if not exists public.game_items (
   name text primary key,
   bin  text not null check (bin in ('green', 'yellow', 'blue', 'red'))
 );
 
 alter table public.game_items enable row level security;
--- สำคัญ: ถ้า client อ่านตารางนี้ได้ item-id patch จะไม่มีประโยชน์เลย
 revoke all on public.game_items from public, anon, authenticated;
 
 insert into public.game_items (name, bin) values
@@ -244,12 +217,6 @@ insert into public.game_items (name, bin) values
   ('พาวเวอร์แบงก์เก่า', 'red')
 on conflict (name) do update set bin = excluded.bin;
 
--- ---------------------------------------------------------------------------
--- 3) สร้างลำดับถัง 150 ชิ้น โดยพยายามเลี่ยงถังเดิมติดกัน 3 ครั้ง
---    (distribution เดียวกับตาราง game_items: 38/38/37/37)
---    ถ้าจำนวนถังที่เหลือบังคับให้ซ้ำ ก็ยอมให้ซ้ำ 1 ครั้งเพื่อไม่ให้เกมค้าง
---    ฟังก์ชันภายใน ไม่ grant ให้ client เรียก
--- ---------------------------------------------------------------------------
 create or replace function public.game_make_sequence()
 returns text[]
 language plpgsql
@@ -275,7 +242,6 @@ begin
   for v_i in 1..37 loop v_pool := array_append(v_pool, 'blue');   end loop;
   for v_i in 1..37 loop v_pool := array_append(v_pool, 'red');    end loop;
 
-  -- สลับลำดับ
   v_len := cardinality(v_pool);
   for v_i in reverse v_len..2 loop
     v_j := 1 + floor(random() * v_i)::integer;
@@ -284,7 +250,6 @@ begin
     v_pool[v_j] := v_tmp;
   end loop;
 
-  -- หยิบทีละถังโดยเลี่ยงถังเดิมติดกัน 3 ครั้ง
   while cardinality(v_pool) > 0 loop
     v_forbidden := null;
     if cardinality(v_out) >= 2
@@ -303,7 +268,7 @@ begin
       end if;
     end loop;
     if v_pick is null then
-      v_pick := 1; -- เหลือแต่ถังที่ห้าม ต้องยอมซ้ำ
+      v_pick := 1;
     end if;
 
     v_bin := v_pool[v_pick];
@@ -323,11 +288,6 @@ $$;
 
 revoke all on function public.game_make_sequence() from public, anon, authenticated;
 
--- ---------------------------------------------------------------------------
--- 4) จับคู่ลำดับถังกับชื่อขยะ (server-only)
---    คืน array ชื่อขยะยาวเท่ากับ p_seq โดยแต่ละชื่อถูกใช้ครั้งเดียวต่อรอบ
---    ถ้าตาราง game_items ยังไม่มีข้อมูล จะคืน null
--- ---------------------------------------------------------------------------
 create or replace function public.game_make_items(p_seq text[])
 returns text[]
 language plpgsql
@@ -379,11 +339,6 @@ $$;
 
 revoke all on function public.game_make_items(text[]) from public, anon, authenticated;
 
--- ---------------------------------------------------------------------------
--- 4.1) ตรวจว่าผู้ดูแลปิดรับผู้เล่นอยู่หรือไม่
---      ตาราง game_server_settings สร้างโดย Database/admin_system.sql
---      ถ้ายังไม่ได้รันไฟล์นั้น ให้ถือว่าเซิร์ฟเวอร์เปิดตามปกติ
--- ---------------------------------------------------------------------------
 create or replace function public.game_server_closed()
 returns boolean
 language plpgsql
@@ -404,11 +359,6 @@ $$;
 
 revoke all on function public.game_server_closed() from public, anon, authenticated;
 
--- ---------------------------------------------------------------------------
--- 5) เริ่มรอบใหม่
---    คืน run_id + ชื่อขยะชิ้นแรก + เวลาจบ (server time)
---    จำกัด: เว้นอย่างน้อย 3 วินาทีระหว่างการเริ่มรอบ และไม่เกิน 30 รอบ/ชั่วโมง
--- ---------------------------------------------------------------------------
 create or replace function public.game_start()
 returns jsonb
 language plpgsql
@@ -427,22 +377,18 @@ begin
     raise exception using errcode = '28000', message = 'authentication_required';
   end if;
 
-  -- ผู้ดูแลปิดรับผู้เล่นชั่วคราว
   if public.game_server_closed() then
     raise exception using errcode = '55000', message = 'maintenance_mode';
   end if;
 
-  -- serialize การเริ่มรอบของผู้เล่นคนเดียวกัน เพื่อไม่ให้ยิงพร้อมกันแล้วเลี่ยง rate limit
   perform pg_advisory_xact_lock(hashtextextended(v_uid::text, 0));
 
-  -- กันผู้เล่นที่ถูกแบนไม่ให้เริ่มรอบใหม่
   if to_regclass('public.banned_players') is not null then
     if exists (select 1 from public.banned_players b where b.user_id = v_uid) then
       raise exception using errcode = '42501', message = 'player_banned';
     end if;
   end if;
 
-  -- กันการกดเริ่มรัว ๆ (ทำก่อน abandon เพื่อไม่ให้รอบที่กำลังเล่นอยู่ถูกปิด)
   select max(created_at) into v_last
     from public.game_runs
    where user_id = v_uid;
@@ -451,7 +397,6 @@ begin
     raise exception using errcode = '22023', message = 'too_many_requests';
   end if;
 
-  -- จำกัดจำนวนรอบต่อชั่วโมง
   select count(*) into v_recent
     from public.game_runs
    where user_id = v_uid
@@ -461,19 +406,16 @@ begin
     raise exception using errcode = '22023', message = 'rate_limited';
   end if;
 
-  -- ปิดรอบที่ค้างอยู่ของเครื่องนี้
   update public.game_runs
      set status = 'abandoned',
          finished_at = coalesce(finished_at, ends_at)
    where user_id = v_uid and status = 'active';
 
-  -- เก็บประวัติแค่ 1 วัน และไม่เกิน 30 รอบล่าสุดต่อผู้เล่น
   delete from public.game_runs
    where user_id = v_uid
      and status <> 'active'
      and created_at < now() - interval '1 day';
 
-  -- ห้ามลบรอบที่ยังอยู่ในหน้าต่าง 1 ชั่วโมง ไม่งั้นตัวนับ rate limit จะรีเซ็ตได้
   delete from public.game_runs as r
    where r.user_id = v_uid
      and r.status <> 'active'
@@ -508,9 +450,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 6) ตอบ 1 ข้อ — server ตัดสินถูก/ผิดและคิดคะแนนเอง
--- ---------------------------------------------------------------------------
 create or replace function public.game_answer(p_run_id uuid, p_bin text)
 returns jsonb
 language plpgsql
@@ -550,7 +489,6 @@ begin
     raise exception using errcode = 'P0002', message = 'invalid_run';
   end if;
 
-  -- ตอบหลังจบแล้ว: คืนสถานะเดิมแบบไม่ error เพื่อให้ client ไปหน้าจอจบเกม
   if v_run.status <> 'active' then
     return jsonb_build_object(
       'ok', true, 'ended', true, 'reason', v_run.status,
@@ -575,13 +513,11 @@ begin
     );
   end if;
 
-  -- กันการยิงรัว: ต้องเว้นอย่างน้อย 440ms ต่อข้อ (เกมจริงเว้น 450ms อยู่แล้ว)
   if v_run.last_answer_at is not null
      and v_now - v_run.last_answer_at < interval '440 milliseconds' then
     raise exception using errcode = '22023', message = 'answers_too_fast';
   end if;
 
-  -- รอบเก่าที่เริ่มไว้ก่อนมี item mapping: สร้างชื่อขยะให้เลยแล้วเก็บไว้
   v_items := v_run.items;
   if v_items is null then
     v_items := public.game_make_items(v_run.seq);
@@ -593,7 +529,6 @@ begin
   v_expected := v_run.seq[v_run.answered + 1];
   v_correct := (v_expected = v_bin);
 
-  -- เก็บสถิติจังหวะตอบ ไว้ให้ game_finish ตรวจว่าเข้าข่ายบอทหรือไม่
   v_delta := greatest(0, floor(
     extract(epoch from (v_now - coalesce(v_run.last_answer_at, v_run.started_at))) * 1000
   )::integer);
@@ -666,9 +601,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 7) จบรอบ + บันทึกคะแนน (ใช้คะแนนที่ server คิดไว้เท่านั้น)
--- ---------------------------------------------------------------------------
 create or replace function public.game_finish(p_run_id uuid, p_name text)
 returns jsonb
 language plpgsql
@@ -691,7 +623,6 @@ begin
   if v_uid is null then
     raise exception using errcode = '28000', message = 'authentication_required';
   end if;
-  -- กันส่งคะแนนต่อหลังแอดมินปิดระบบกลางรอบ (เหมือน game_start/game_answer)
   if public.game_server_closed() then
     raise exception using errcode = '55000', message = 'maintenance_mode';
   end if;
@@ -725,13 +656,6 @@ begin
      returning * into v_run;
   end if;
 
-  -- -----------------------------------------------------------------------
-  -- ตรวจจับบอทอย่างง่ายจากจังหวะตอบ
-  --   เงื่อนไข: ตอบอย่างน้อย 51 ข้อ, ตอบถูกทุกข้อ และเข้าข่ายข้อใดด้านล่างนี้
-  --    - SD < 20ms และเฉลี่ย < 700ms (จังหวะสม่ำเสมอเกินมนุษย์)
-  --    - ช่วง min-max แคบ < 1200ms และเฉลี่ย < 1100ms
-  --      (กันบอทที่สุ่ม delay ให้ SD สูง แต่ยังไม่มีจังหวะหยุดอ่านเหมือนมนุษย์)
-  -- -----------------------------------------------------------------------
   v_count := v_run.answered;
   if v_count >= 51 and v_run.right_count = v_count and v_run.delta_sum > 0 then
     v_mean := v_run.delta_sum::double precision / v_count;
@@ -767,7 +691,6 @@ begin
     return jsonb_build_object('ok', false, 'error', 'no_score');
   end if;
 
-  -- กันผู้เล่นที่เพิ่งถูกแบนระหว่างเล่น
   if to_regclass('public.banned_players') is not null then
     if exists (select 1 from public.banned_players b where b.user_id = v_uid) then
       raise exception using errcode = '42501', message = 'player_banned';
@@ -797,10 +720,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 8) ปิดช่องเดิม: submit_score ไม่รับคะแนนจาก client อีกต่อไป
---    (คง signature ไว้เพื่อให้ client เก่าได้ error ที่อ่านรู้เรื่อง)
--- ---------------------------------------------------------------------------
 create or replace function public.submit_score(
   p_name text,
   p_score integer,
@@ -817,9 +736,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 9) สิทธิ์การเรียก
--- ---------------------------------------------------------------------------
 revoke all on function public.game_start() from public, anon, authenticated;
 revoke all on function public.game_answer(uuid, text) from public, anon, authenticated;
 revoke all on function public.game_finish(uuid, text) from public, anon, authenticated;
@@ -830,23 +746,3 @@ grant execute on function public.game_finish(uuid, text) to authenticated;
 revoke all on function public.submit_score(text, integer, integer, integer) from public, anon, authenticated;
 grant execute on function public.submit_score(text, integer, integer, integer) to authenticated;
 
--- ---------------------------------------------------------------------------
--- 10) ตรวจสอบหลังติดตั้ง
--- ---------------------------------------------------------------------------
--- select p.proname, pg_get_function_identity_arguments(p.oid)
--- from pg_proc p join pg_namespace n on n.oid = p.pronamespace
--- where n.nspname = 'public'
---   and p.proname in ('game_start','game_answer','game_finish',
---                     'game_make_sequence','game_make_items');
---
--- select count(*) as items, count(distinct bin) as bins from public.game_items;
--- select count(*) from public.game_runs;
---
--- ดูรอบที่น่าสงสัย (เฉพาะ service_role / SQL editor)
--- select id, user_id, score, answered, right_count,
---        round(delta_sum::numeric / nullif(answered,0), 1) as mean_ms,
---        flag_reason, created_at
---   from public.game_runs
---  where suspicious
---  order by created_at desc
---  limit 50;
