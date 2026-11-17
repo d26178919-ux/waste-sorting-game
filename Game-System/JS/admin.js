@@ -1,9 +1,7 @@
-/* ระบบหลังบ้าน — Waste Sorting Game
- * ทำงานร่วมกับ Database/admin_system.sql ผ่าน Supabase RPC เท่านั้น
- * ไม่มีการเรียก Edge Function และไม่เก็บ service_role key ฝั่ง client
- */
 (() => {
   'use strict';
+
+  try { if (window.top !== window.self) window.top.location = window.self.location; } catch (e) {}
 
   const CONFIG = window.SUPABASE_CONFIG || {};
   const TOKEN_KEY = 'wsg_admin_token';
@@ -17,45 +15,46 @@
   const ROLE_LABELS = { owner: 'owner', editor: 'editor', viewer: 'viewer' };
 
   const MESSAGES = {
-    missing_credentials: 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน',
-    invalid_credentials: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
-    too_many_attempts: 'พยายามเข้าสู่ระบบผิดหลายครั้ง กรุณารอ 15 นาทีแล้วลองใหม่',
+    missing_credentials: 'ใส่ชื่อผู้ใช้และรหัสผ่าน',
+    invalid_credentials: 'ชื่อผู้ใช้หรือรหัสผ่านผิด',
+    too_many_attempts: 'ล็อกอินผิดหลายครั้ง รอ 15 นาที',
     invalid_session: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่',
-    password_change_required: 'ต้องเปลี่ยนรหัสผ่านก่อนใช้งานส่วนอื่น',
-    forbidden: 'บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้',
+    password_change_required: 'ต้องเปลี่ยนรหัสผ่านก่อน',
+    forbidden: 'บัญชีนี้ไม่มีสิทธิ์',
     weak_password: 'รหัสผ่านต้องยาวอย่างน้อย 8 ตัวอักษร',
-    same_password: 'รหัสผ่านใหม่ต้องต่างจากรหัสเดิม',
-    invalid_password: 'รหัสผ่านปัจจุบันไม่ถูกต้อง',
-    password_not_configured: 'บัญชีนี้ยังไม่มีรหัสผ่านที่ใช้งานได้ — กรุณาเปลี่ยนรหัสผ่านก่อน',
+    same_password: 'รหัสผ่านใหม่ต้องต่างจากเดิม',
+    invalid_password: 'รหัสผ่านปัจจุบันผิด',
+    password_not_configured: 'ยังไม่มีรหัสผ่าน กรุณาเปลี่ยนก่อน',
     invalid_special_password: 'รหัสผ่านพิเศษไม่ถูกต้อง',
     weak_special_password: 'รหัสผ่านพิเศษต้องยาว 4–64 ตัวอักษร',
-    same_special_password: 'รหัสผ่านพิเศษใหม่ต้องต่างจากเดิม',
-    special_password_not_configured: 'ยังไม่ได้ตั้งรหัสผ่านพิเศษ หรือค่าที่เก็บไว้เสียหาย — ต้องตั้งใหม่ด้วย SQL ก่อน',
+    same_special_password: 'รหัสพิเศษใหม่ต้องต่างจากเดิม',
+    special_password_not_configured: 'ยังไม่ตั้งรหัสพิเศษ ให้ตั้งใหม่ด้วย SQL',
     duplicate_player_name: 'ชื่อผู้เล่นนี้ถูกใช้แล้ว',
     duplicate_admin: 'ชื่อผู้ใช้นี้มีอยู่แล้ว',
     invalid_name: 'ชื่อต้องยาว 1–16 ตัวอักษร',
     invalid_role: 'บทบาทไม่ถูกต้อง',
-    invalid_reason: 'กรุณากรอกเหตุผล 3–200 ตัวอักษร',
-    invalid_score: 'คะแนนต้องเป็นจำนวนเต็ม 0–1,000,000',
+    invalid_reason: 'ใส่เหตุผล 3–200 ตัว',
+    invalid_score: 'คะแนนต้องเป็นเลขเต็ม 0–1,000,000',
     invalid_status: 'สถานะรอบเกมไม่ถูกต้อง',
-    invalid_action: 'คำสั่งตรวจสอบรอบเกมไม่ถูกต้อง',
+    invalid_action: 'คำสั่งตรวจรอบไม่ถูกต้อง',
     invalid_session_id: 'รหัสเซสชันไม่ถูกต้อง',
-    player_not_found: 'ไม่พบผู้เล่นนี้ (อาจถูกลบไปแล้ว)',
+    player_not_found: 'ไม่พบผู้เล่น',
     admin_not_found: 'ไม่พบผู้ใช้แอดมินนี้',
     ban_not_found: 'ผู้เล่นนี้ไม่ได้ถูกแบน',
     player_banned: 'ผู้เล่นนี้ถูกแบน — ต้องปลดแบนก่อน',
     run_not_found: 'ไม่พบรอบเกมนี้',
     run_not_suspicious: 'รอบนี้ไม่ได้ถูก flag อยู่',
-    run_not_active: 'รอบนี้ไม่ได้กำลังเล่นอยู่',
-    run_not_finished: 'ต้องปิดรอบเกมก่อนจึงจะอนุมัติได้',
-    player_name_missing: 'ไม่พบชื่อผู้เล่นสำหรับบันทึกคะแนน',
-    session_not_found: 'ไม่พบเซสชันนี้ (อาจหมดอายุแล้ว)',
-    cannot_revoke_self: 'ตัดเซสชันที่กำลังใช้งานอยู่ไม่ได้',
-    cannot_disable_self: 'ปิดใช้งานบัญชีของตัวเองไม่ได้',
-    last_owner: 'ต้องมี owner ที่ใช้งานอยู่อย่างน้อย 1 คน',
+    run_not_active: 'รอบนี้ไม่ได้เล่นอยู่',
+    run_not_finished: 'ต้องปิดรอบก่อนอนุมัติ',
+    player_name_missing: 'ไม่พบชื่อผู้เล่น',
+    session_not_found: 'ไม่พบเซสชัน',
+    cannot_revoke_self: 'ตัดเซสชันที่ใช้อยู่ไม่ได้',
+    cannot_disable_self: 'ปิดบัญชีตัวเองไม่ได้',
+    cannot_delete_self: 'ลบบัญชีตัวเองไม่ได้',
+    last_owner: 'ต้องมี owner อย่างน้อย 1 คน',
     invalid_maintenance_password: 'รหัสยืนยันไม่ถูกต้อง',
-    maintenance_not_configured: 'ยังไม่ได้ตั้งรหัสยืนยันเซิร์ฟเวอร์ — กรุณาตั้งค่าในฐานข้อมูลก่อน',
-    not_connected: 'ยังเชื่อมต่อฐานข้อมูลไม่สำเร็จ'
+    maintenance_not_configured: 'ยังไม่ตั้งรหัสยืนยัน กรุณาตั้งใน DB',
+    not_connected: 'เชื่อมต่อฐานข้อมูลไม่สำเร็จ'
   };
 
   const ACTION_LABELS = {
@@ -73,47 +72,48 @@
     revoke_session: 'ตัดเซสชัน',
     change_password: 'เปลี่ยนรหัสผ่าน',
     set_special_password: 'ตั้งรหัสผ่านพิเศษ',
-    add_admin: 'เพิ่มผู้ดูแล',
-    enable_admin: 'เปิดใช้งานผู้ดูแล',
-    disable_admin: 'ปิดใช้งานผู้ดูแล',
-    reset_admin_password: 'รีเซ็ตรหัสผ่านผู้ดูแล',
-    maintenance_on: 'ปิดใช้งานเซิร์ฟเวอร์',
-    maintenance_off: 'เปิดใช้งานเซิร์ฟเวอร์'
+    add_admin: 'เพิ่มแอดมิน',
+    enable_admin: 'เปิดแอดมิน',
+    disable_admin: 'ปิดแอดมิน',
+    reset_admin_password: 'รีเซ็ตรหัสผ่านแอดมิน',
+    delete_admin: 'ลบบันชีแอดมิน',
+    maintenance_on: 'ปิดระบบ',
+    maintenance_off: 'เปิดระบบ'
   };
 
   const COMMAND_GROUPS = [
-    { id: 'players', title: 'ผู้เล่น', hint: 'ค้นหา ดูโปรไฟล์ และเปลี่ยนชื่อผู้เล่น' },
-    { id: 'scores', title: 'คะแนน', hint: 'ตั้ง รีเซ็ต หรือลบคะแนนผู้เล่น' },
-    { id: 'moderation', title: 'แบน / ปลดแบน', hint: 'จัดการผู้เล่นที่ละเมิดกติกา' },
-    { id: 'runs', title: 'ตรวจสอบรอบเกม', hint: 'ตรวจ anti-bot และจัดการรอบที่ผิดปกติ' },
-    { id: 'security', title: 'ความปลอดภัย', hint: 'จัดการเซสชันของผู้ดูแลระบบ' },
-    { id: 'system', title: 'ระบบ', hint: 'ภาพรวมสถิติและสถานะเซิร์ฟเวอร์' }
+    { id: 'players', title: 'ผู้เล่น', hint: 'ค้นหา ดูโปรไฟล์ เปลี่ยนชื่อ' },
+    { id: 'scores', title: 'คะแนน', hint: 'ตั้ง/รีเซ็ต/ลบคะแนน' },
+    { id: 'moderation', title: 'แบน / ปลดแบน', hint: 'จัดการผู้เล่นละเมิดกติกา' },
+    { id: 'runs', title: 'ตรวจสอบรอบเกม', hint: 'ตรวจบอทและรอบผิดปกติ' },
+    { id: 'security', title: 'ความปลอดภัย', hint: 'จัดการเซสชันแอดมิน' },
+    { id: 'system', title: 'ระบบ', hint: 'สถิติและสถานะระบบ' }
   ];
 
   const COMMANDS = [
-    { id: 'player.search', group: 'players', roles: ['owner', 'editor', 'viewer'], label: 'ค้นหาผู้เล่น', hint: 'ค้นจากชื่อหรือ UUID' },
-    { id: 'player.detail', group: 'players', roles: ['owner', 'editor', 'viewer'], label: 'ดูโปรไฟล์ / ประวัติ', hint: 'คะแนน อันดับ สถานะแบน และรอบล่าสุด' },
-    { id: 'player.rename', group: 'players', roles: ['owner', 'editor'], label: 'เปลี่ยนชื่อผู้เล่น', hint: 'แก้ชื่อที่แสดงบนอันดับ' },
+    { id: 'player.search', group: 'players', roles: ['owner', 'editor', 'viewer'], label: 'ค้นหาผู้เล่น', hint: 'ค้นชื่อหรือ UUID' },
+    { id: 'player.detail', group: 'players', roles: ['owner', 'editor', 'viewer'], label: 'ดูโปรไฟล์/ประวัติ', hint: 'คะแนน อันดับ แบน รอบล่าสุด' },
+    { id: 'player.rename', group: 'players', roles: ['owner', 'editor'], label: 'เปลี่ยนชื่อผู้เล่น', hint: 'แก้ชื่อในอันดับ' },
 
-    { id: 'score.set', group: 'scores', roles: ['owner'], label: 'ตั้งคะแนนใหม่', hint: 'กำหนดคะแนนเองพร้อมเหตุผล' },
+    { id: 'score.set', group: 'scores', roles: ['owner'], label: 'ตั้งคะแนนใหม่', hint: 'ตั้งคะแนนพร้อมเหตุผล' },
     { id: 'score.reset', group: 'scores', roles: ['owner', 'editor'], label: 'รีเซ็ตคะแนน', hint: 'ตั้งคะแนนและสถิติเป็น 0' },
-    { id: 'score.delete', group: 'scores', roles: ['owner', 'editor'], label: 'ลบคะแนน', hint: 'ลบผู้เล่นออกจากอันดับถาวร' },
+    { id: 'score.delete', group: 'scores', roles: ['owner', 'editor'], label: 'ลบคะแนน', hint: 'ลบออกจากอันดับถาวร' },
 
-    { id: 'player.ban', group: 'moderation', roles: ['owner', 'editor'], label: 'แบนผู้เล่น', hint: 'บล็อกการเล่นและการส่งคะแนน' },
-    { id: 'player.unban', group: 'moderation', roles: ['owner', 'editor'], label: 'ปลดแบนผู้เล่น', hint: 'คืนสิทธิ์ให้ผู้เล่น' },
+    { id: 'player.ban', group: 'moderation', roles: ['owner', 'editor'], label: 'แบนผู้เล่น', hint: 'บล็อกเล่นและส่งคะแนน' },
+    { id: 'player.unban', group: 'moderation', roles: ['owner', 'editor'], label: 'ปลดแบนผู้เล่น', hint: 'คืนสิทธิ์ผู้เล่น' },
 
-    { id: 'run.flagged', group: 'runs', roles: ['owner', 'editor', 'viewer'], label: 'รอบที่ถูก flag', hint: 'รายการรอบที่ anti-bot สงสัย' },
-    { id: 'run.search', group: 'runs', roles: ['owner', 'editor', 'viewer'], label: 'ค้นหารอบตามผู้เล่น', hint: 'ดูประวัติรอบทั้งหมดของผู้เล่น' },
-    { id: 'run.approve', group: 'runs', roles: ['owner', 'editor'], label: 'อนุมัติรอบ', hint: 'ล้าง flag โดยไม่บันทึกคะแนน' },
-    { id: 'run.save', group: 'runs', roles: ['owner'], label: 'อนุมัติ + บันทึกคะแนน', hint: 'owner เท่านั้น — บันทึกคะแนนจากรอบที่ตรวจแล้ว' },
-    { id: 'run.reject', group: 'runs', roles: ['owner', 'editor'], label: 'ยืนยันว่าเป็นบอท', hint: 'คงสถานะ flag และไม่บันทึกคะแนน' },
-    { id: 'run.flag', group: 'runs', roles: ['owner', 'editor'], label: 'ตั้ง flag ด้วยมือ', hint: 'ทำเครื่องหมายรอบที่สงสัย' },
-    { id: 'run.terminate', group: 'runs', roles: ['owner', 'editor'], label: 'ยกเลิกรอบที่กำลังเล่น', hint: 'ปิดรอบ active ทันที' },
+    { id: 'run.flagged', group: 'runs', roles: ['owner', 'editor', 'viewer'], label: 'รอบ flag', hint: 'รอบที่ระบบสงสัย' },
+    { id: 'run.search', group: 'runs', roles: ['owner', 'editor', 'viewer'], label: 'ค้นหารอบตามผู้เล่น', hint: 'ดูรอบทั้งหมดของผู้เล่น' },
+    { id: 'run.approve', group: 'runs', roles: ['owner', 'editor'], label: 'อนุมัติรอบ', hint: 'ล้าง flag ไม่บันทึกคะแนน' },
+    { id: 'run.save', group: 'runs', roles: ['owner'], label: 'อนุมัติ + บันทึกคะแนน', hint: 'owner — บันทึกคะแนนรอบตรวจแล้ว' },
+    { id: 'run.reject', group: 'runs', roles: ['owner', 'editor'], label: 'ยืนยันว่าเป็นบอท', hint: 'คง flag ไม่บันทึกคะแนน' },
+    { id: 'run.flag', group: 'runs', roles: ['owner', 'editor'], label: 'ตั้ง flag ด้วยมือ', hint: 'ทำเครื่องหมายรอบสงสัย' },
+    { id: 'run.terminate', group: 'runs', roles: ['owner', 'editor'], label: 'ยกเลิกรอบเล่นอยู่', hint: 'ปิดรอบ active' },
 
-    { id: 'sessions.manage', group: 'security', roles: ['owner'], label: 'จัดการเซสชัน', hint: 'ดูและตัดเซสชันของผู้ดูแล' },
+    { id: 'sessions.manage', group: 'security', roles: ['owner'], label: 'จัดการเซสชัน', hint: 'ดู/ตัดเซสชันแอดมิน' },
 
-    { id: 'system.stats', group: 'system', roles: ['owner', 'editor', 'viewer'], label: 'สถิติระบบ', hint: 'ผู้เล่น รอบเกม และจำนวนที่ถูก flag' },
-    { id: 'server.maintenance', group: 'system', roles: ['owner', 'editor'], label: 'ปิด/เปิดใช้งานเซิร์ฟเวอร์', hint: 'หยุดรับผู้เล่นชั่วคราว (ต้องใส่รหัสยืนยัน)' }
+    { id: 'system.stats', group: 'system', roles: ['owner', 'editor', 'viewer'], label: 'สถิติระบบ', hint: 'ผู้เล่น รอบ และ flag' },
+    { id: 'server.maintenance', group: 'system', roles: ['owner', 'editor'], label: 'ปิด/เปิดระบบ', hint: 'หยุดรับชั่วคราว (ใส่รหัสยืนยัน)' }
   ];
 
   const state = {
@@ -135,6 +135,8 @@
     renameTarget: null,
     banTarget: null,
     resetAdminTarget: null,
+    deleteAdminTarget: null,
+    deleteAdminBusy: false,
     playerPickMode: 'player.detail',
     playerSearchRows: [],
     scoreTarget: null,
@@ -156,9 +158,6 @@
     sessionTickTimer: null
   };
 
-  /* ------------------------------------------------------------------ */
-  /* helpers                                                             */
-  /* ------------------------------------------------------------------ */
 
   const fmtNumber = (value) => Number(value || 0).toLocaleString('th-TH');
 
@@ -195,14 +194,10 @@
     toastTimer = setTimeout(() => { el.hidden = true; }, 3600);
   }
 
-  /* ------------------------------------------------------------------ */
-  /* page / tab transitions                                              */
-  /* ------------------------------------------------------------------ */
 
   function animateEnter(el, className) {
     if (!el) return;
     el.classList.remove(className);
-    // รีเฟลช์เพื่อให้ animation เล่นใหม่ได้แม้เปลี่ยนหน้าถี่ ๆ
     void el.offsetWidth;
     el.classList.add(className);
     el.addEventListener('animationend', function onEnd(event) {
@@ -212,9 +207,6 @@
     });
   }
 
-  /* ------------------------------------------------------------------ */
-  /* theme (light / dark)                                               */
-  /* ------------------------------------------------------------------ */
 
   function currentTheme() {
     return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
@@ -225,13 +217,13 @@
     document.documentElement.dataset.theme = next;
 
     if (persist) {
-      try { localStorage.setItem(THEME_KEY, next); } catch (error) { /* ignore */ }
+      try { localStorage.setItem(THEME_KEY, next); } catch (error) {  }
     }
 
     const button = $('themeToggle');
     if (button) {
       const dark = next === 'dark';
-      const label = dark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด';
+      const label = dark ? 'โหมดสว่าง' : 'โหมดมืด';
       button.setAttribute('aria-pressed', String(dark));
       button.setAttribute('aria-label', label);
       button.setAttribute('title', label);
@@ -256,9 +248,6 @@
     });
   }
 
-  /* ------------------------------------------------------------------ */
-  /* session timer (แจ้งเตือนก่อนหมดอายุ + ออกจากระบบอัตโนมัติ)          */
-  /* ------------------------------------------------------------------ */
 
   function persistSession(token, expiresAt) {
     try {
@@ -270,7 +259,7 @@
       } else {
         sessionStorage.removeItem(EXPIRES_KEY);
       }
-    } catch (error) { /* ignore */ }
+    } catch (error) {  }
   }
 
   function clearSessionTimers() {
@@ -301,9 +290,9 @@
       return;
     }
     el.hidden = false;
-    el.textContent = `เซสชันเหลือ ${fmtRemaining(remaining)}`;
+    el.textContent = `เหลือ ${fmtRemaining(remaining)}`;
     el.classList.toggle('warning', remaining <= SESSION_WARN_MS);
-    el.title = `หมดอายุเวลา ${new Date(state.expiresAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}`;
+    el.title = `หมดอายุ ${new Date(state.expiresAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}`;
     if (settingsEl) {
       settingsEl.textContent = `เหลือ ${fmtRemaining(remaining)}`;
       settingsEl.classList.toggle('warning', remaining <= SESSION_WARN_MS);
@@ -315,7 +304,7 @@
     state.sessionWarned = true;
     updateSessionTimer();
     const remaining = state.expiresAt ? state.expiresAt - Date.now() : 0;
-    toast(`เซสชันจะหมดอายุในอีก ${fmtRemaining(Math.max(remaining, 0))} — ควรบันทึกงานให้เสร็จ`);
+    toast(`เซสชันหมดในอีก ${fmtRemaining(Math.max(remaining, 0))} — บันทึกงานก่อน`);
   }
 
   function scheduleSession(expiresAt) {
@@ -360,12 +349,12 @@
     const raw = String((err && (err.message || err.error_description)) || '');
     const code = String((err && err.code) || '');
     if (code === 'PGRST202' || code === '42883' || /could not find the function|does not exist/i.test(raw)) {
-      return 'ยังไม่ได้ติดตั้งฐานข้อมูลแอดมิน — กรุณารัน Database/admin_system.sql ใน Supabase SQL Editor';
+      return 'ยังไม่ติดตั้งฐานข้อมูล กรุณารัน admin_system.sql';
     }
     const key = Object.keys(MESSAGES).find((name) => raw.includes(name));
     if (key) return MESSAGES[key];
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'ไม่มีการเชื่อมต่ออินเทอร์เน็ต';
-    return raw ? `เกิดข้อผิดพลาด: ${raw}` : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'ไม่ได้เชื่อมต่ออินเทอร์เน็ต';
+    return raw ? `เกิดข้อผิดพลาด: ${raw}` : 'ข้อผิดพลาดไม่ทราบสาเหตุ';
   }
 
   async function rpc(name, params) {
@@ -508,11 +497,26 @@
     return Promise.resolve();
   }
 
-  /* ------------------------------------------------------------------ */
-  /* screens                                                             */
-  /* ------------------------------------------------------------------ */
+
+  function cancelPendingDialogs() {
+    const password = state.passwordRequest;
+    state.passwordRequest = null;
+    if (password) password.resolve(null);
+
+    const confirm = state.confirmResolve;
+    state.confirmResolve = null;
+    if (confirm) confirm(false);
+
+    const reason = state.reasonResolve;
+    state.reasonResolve = null;
+    if (reason) reason(null);
+
+    state.deleteAdminTarget = null;
+    state.deleteAdminBusy = false;
+  }
 
   function showLogin(message = '', type = '') {
+    cancelPendingDialogs();
     $('loginPanel').hidden = false;
     $('dashboard').hidden = true;
     $('sessionTimer').hidden = true;
@@ -533,7 +537,12 @@
   }
 
   function applyAdmin(admin) {
-    if (admin) state.admin = { ...(state.admin || {}), ...admin };
+    if (admin) {
+      const safe = { ...admin };
+      delete safe.token;
+      delete safe.expires_at;
+      state.admin = { ...(state.admin || {}), ...safe };
+    }
     const current = state.admin || {};
     const roleLabel = ROLE_LABELS[current.role] || current.role || '—';
     $('adminName').textContent = current.username || '—';
@@ -585,14 +594,10 @@
       const data = await rpc('admin_maintenance_status', { p_token: state.token });
       applyMaintenance(data);
     } catch (err) {
-      // ถ้ายังไม่ได้รัน SQL ส่วนนี้ อย่าทำให้ dashboard ทั้งหน้าใช้งานไม่ได้
       console.warn('[wsg-admin] maintenance status failed', err);
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* tabs                                                                */
-  /* ------------------------------------------------------------------ */
 
   function switchTab(tab) {
     if (!TABS.includes(tab)) return;
@@ -625,9 +630,6 @@
     if (tab === 'admins') return loadAdmins();
   }
 
-  /* ------------------------------------------------------------------ */
-  /* command center                                                      */
-  /* ------------------------------------------------------------------ */
 
   function renderCommands() {
     const host = $('commandGroups');
@@ -671,35 +673,35 @@
 
     switch (id) {
       case 'player.search':
-        return openPlayerPicker('player.detail', 'ค้นหาผู้เล่น', 'พิมพ์ชื่อหรือ UUID แล้วกดค้นหา');
+        return openPlayerPicker('player.detail', 'ค้นหาผู้เล่น', 'พิมพ์ชื่อหรือ UUID');
       case 'player.detail':
-        return openPlayerPicker('player.detail', 'ดูโปรไฟล์ผู้เล่น', 'เลือกผู้เล่นที่ต้องการดูข้อมูล');
+        return openPlayerPicker('player.detail', 'ดูโปรไฟล์', 'เลือกผู้เล่น');
       case 'player.rename':
-        return openPlayerPicker('player.rename', 'เปลี่ยนชื่อผู้เล่น', 'เลือกผู้เล่นที่ต้องการเปลี่ยนชื่อ');
+        return openPlayerPicker('player.rename', 'เปลี่ยนชื่อผู้เล่น', 'เลือกผู้เล่น');
       case 'score.set':
-        return openPlayerPicker('score.set', 'ตั้งคะแนนใหม่', 'เลือกผู้เล่นที่ต้องการกำหนดคะแนน');
+        return openPlayerPicker('score.set', 'ตั้งคะแนนใหม่', 'เลือกผู้เล่น');
       case 'score.reset':
-        return openPlayerPicker('score.reset', 'รีเซ็ตคะแนน', 'เลือกผู้เล่นที่ต้องการรีเซ็ต');
+        return openPlayerPicker('score.reset', 'รีเซ็ตคะแนน', 'เลือกผู้เล่น');
       case 'score.delete':
-        return openPlayerPicker('score.delete', 'ลบคะแนน', 'เลือกผู้เล่นที่ต้องการลบออกจากอันดับ');
+        return openPlayerPicker('score.delete', 'ลบคะแนน', 'เลือกผู้เล่น');
       case 'player.ban':
-        return openPlayerPicker('player.ban', 'แบนผู้เล่น', 'เลือกผู้เล่นที่ต้องการแบน');
+        return openPlayerPicker('player.ban', 'แบนผู้เล่น', 'เลือกผู้เล่น');
       case 'player.unban':
-        return openPlayerPicker('player.unban', 'ปลดแบนผู้เล่น', 'เลือกผู้เล่นที่ต้องการปลดแบน');
+        return openPlayerPicker('player.unban', 'ปลดแบนผู้เล่น', 'เลือกผู้เล่น');
       case 'run.flagged':
-        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'รอบที่ถูก flag' });
+        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'รอบ flag' });
       case 'run.search':
-        return openPlayerPicker('runs.player', 'ค้นหารอบตามผู้เล่น', 'เลือกผู้เล่นเพื่อดูรอบเกมทั้งหมด');
+        return openPlayerPicker('runs.player', 'ค้นหารอบตามผู้เล่น', 'เลือกผู้เล่น');
       case 'run.approve':
         return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'เลือกรอบเพื่ออนุมัติ' });
       case 'run.save':
-        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'เลือกรอบเพื่ออนุมัติและบันทึกคะแนน' });
+        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'เลือกรอบเพื่ออนุมัติ + บันทึก' });
       case 'run.reject':
-        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'เลือกรอบเพื่อยืนยันว่าเป็นบอท' });
+        return loadRuns({ status: 'suspicious', player: null, page: 0, title: 'เลือกรอบเพื่อยืนยันบอท' });
       case 'run.flag':
         return loadRuns({ status: 'all', player: null, page: 0, title: 'เลือกรอบเพื่อตั้ง flag' });
       case 'run.terminate':
-        return loadRuns({ status: 'active', player: null, page: 0, title: 'รอบที่กำลังเล่น' });
+        return loadRuns({ status: 'active', player: null, page: 0, title: 'รอบเล่นอยู่' });
       case 'sessions.manage':
         return loadSessions();
       case 'system.stats':
@@ -738,7 +740,7 @@
       renderPlayerSearchResults();
       setMessage(
         $('playerSearchMessage'),
-        state.playerSearchRows.length ? `พบ ${fmtNumber(data && data.total)} รายการ` : 'ไม่พบผู้เล่นที่ตรงกับคำค้น',
+        state.playerSearchRows.length ? `พบ ${fmtNumber(data && data.total)} รายการ` : 'ไม่พบผู้เล่น',
         state.playerSearchRows.length ? 'success' : 'error'
       );
     } catch (err) {
@@ -752,7 +754,7 @@
     const host = $('playerSearchResults');
     host.textContent = '';
     if (!state.playerSearchRows.length) {
-      host.append(make('p', 'result-empty', 'ยังไม่มีผลลัพธ์'));
+      host.append(make('p', 'result-empty', 'ไม่มีผลลัพธ์'));
       return;
     }
 
@@ -824,9 +826,9 @@
     grid.append(detailItem('ตอบถูก', fmtNumber(data.right_count)));
     grid.append(detailItem('คอมโบสูงสุด', fmtNumber(data.max_combo)));
     grid.append(detailItem('สถานะ', data.is_banned ? 'ถูกแบน' : 'ปกติ'));
-    grid.append(detailItem('เหตุผลที่แบน', data.ban_reason));
+    grid.append(detailItem('เหตุผลแบน', data.ban_reason));
     grid.append(detailItem('รอบทั้งหมด', fmtNumber(data.run_count)));
-    grid.append(detailItem('รอบที่ถูก flag', fmtNumber(data.flagged_count)));
+    grid.append(detailItem('รอบ flag', fmtNumber(data.flagged_count)));
     grid.append(detailItem('เล่นล่าสุด', fmtDate(data.last_played_at)));
     grid.append(detailItem('อัปเดตคะแนน', fmtDate(data.updated_at)));
 
@@ -885,7 +887,7 @@
     state.scoreTarget = row;
     $('scoreSetForm').reset();
     $('scoreValue').value = String(Number(row.score || 0));
-    $('scoreTargetText').textContent = `ผู้เล่น: ${row.name} — คะแนนปัจจุบัน ${fmtNumber(row.score)}`;
+    $('scoreTargetText').textContent = `${row.name} — คะแนน ${fmtNumber(row.score)}`;
     setMessage($('scoreSetMessage'), '');
     openDialog($('scoreSetDialog'));
     $('scoreValue').focus();
@@ -969,7 +971,7 @@
   async function resetScore(row) {
     const reason = await promptReason({
       title: 'รีเซ็ตคะแนน',
-      text: `ตั้งคะแนนและสถิติของ ${playerLabel(row)} เป็น 0`,
+      text: `ตั้งคะแนน ${playerLabel(row)} เป็น 0`,
       okLabel: 'รีเซ็ต'
     });
     if (!reason) return;
@@ -977,7 +979,7 @@
       const done = await requestPassword(
         {
           title: 'รีเซ็ตคะแนน',
-          text: `ตั้งคะแนนและสถิติของ ${playerLabel(row)} เป็น 0`,
+          text: `ตั้งคะแนน ${playerLabel(row)} เป็น 0`,
           okLabel: 'รีเซ็ต'
         },
         (password) => rpc('admin_reset_score', {
@@ -998,7 +1000,7 @@
   async function deleteScore(row) {
     const reason = await promptReason({
       title: 'ลบคะแนน',
-      text: `ลบ ${playerLabel(row)} ออกจากอันดับถาวร`,
+      text: `ลบ ${playerLabel(row)} ออกจากอันดับ`,
       okLabel: 'ลบ'
     });
     if (!reason) return;
@@ -1006,7 +1008,7 @@
       const done = await requestPassword(
         {
           title: 'ลบคะแนน',
-          text: `ลบ ${playerLabel(row)} ออกจากอันดับถาวร`,
+          text: `ลบ ${playerLabel(row)} ออกจากอันดับ`,
           okLabel: 'ลบ'
         },
         (password) => rpc('admin_delete_score', {
@@ -1059,7 +1061,7 @@
     state.runListTotal = 0;
   }
 
-  async function loadRuns({ status = 'all', player = null, page = 0, title = 'รายการรอบเกม' } = {}) {
+  async function loadRuns({ status = 'all', player = null, page = 0, title = 'รายการรอบ' } = {}) {
     state.runListStatus = status;
     state.runListPlayer = player;
     state.runListPage = page;
@@ -1122,7 +1124,7 @@
   function renderRuns(rows) {
     const body = $('commandResultBody');
     if (!rows.length) {
-      body.append(make('p', 'result-empty', 'ไม่พบรอบเกมที่ตรงเงื่อนไข'));
+      body.append(make('p', 'result-empty', 'ไม่พบรอบ'));
       return;
     }
 
@@ -1144,8 +1146,8 @@
       grid.append(detailItem('ตอบ', fmtNumber(run.answered)));
       grid.append(detailItem('ตอบถูก', fmtNumber(run.right_count)));
       grid.append(detailItem('คอมโบสูงสุด', fmtNumber(run.max_combo)));
-      grid.append(detailItem('เฉลี่ยต่อข้อ', run.mean_delta_ms === null ? '—' : `${fmtNumber(run.mean_delta_ms)} ms`));
-      grid.append(detailItem('ส่วนเบี่ยงเบน', run.sd_delta_ms === null ? '—' : `${fmtNumber(run.sd_delta_ms)} ms`));
+      grid.append(detailItem('เฉลี่ย/ข้อ', run.mean_delta_ms === null ? '—' : `${fmtNumber(run.mean_delta_ms)} ms`));
+      grid.append(detailItem('SD', run.sd_delta_ms === null ? '—' : `${fmtNumber(run.sd_delta_ms)} ms`));
       grid.append(detailItem('เริ่ม', fmtDate(run.started_at)));
       grid.append(detailItem('จบ', fmtDate(run.finished_at)));
       if (run.suspicious && run.flag_reason) grid.append(detailItem('เหตุผล flag', run.flag_reason));
@@ -1187,10 +1189,10 @@
       grid.append(detailItem('ตอบ', fmtNumber(data.answered)));
       grid.append(detailItem('ตอบถูก', fmtNumber(data.right_count)));
       grid.append(detailItem('คอมโบสูงสุด', fmtNumber(data.max_combo)));
-      grid.append(detailItem('เฉลี่ยต่อข้อ', data.mean_delta_ms === null ? '—' : `${fmtNumber(data.mean_delta_ms)} ms`));
-      grid.append(detailItem('ส่วนเบี่ยงเบน', data.sd_delta_ms === null ? '—' : `${fmtNumber(data.sd_delta_ms)} ms`));
-      grid.append(detailItem('เวลาตอบเร็วสุด', data.min_delta === null ? '—' : `${fmtNumber(data.min_delta)} ms`));
-      grid.append(detailItem('เวลาตอบช้าสุด', data.max_delta === null ? '—' : `${fmtNumber(data.max_delta)} ms`));
+      grid.append(detailItem('เฉลี่ย/ข้อ', data.mean_delta_ms === null ? '—' : `${fmtNumber(data.mean_delta_ms)} ms`));
+      grid.append(detailItem('SD', data.sd_delta_ms === null ? '—' : `${fmtNumber(data.sd_delta_ms)} ms`));
+      grid.append(detailItem('ตอบเร็วสุด', data.min_delta === null ? '—' : `${fmtNumber(data.min_delta)} ms`));
+      grid.append(detailItem('ตอบช้าสุด', data.max_delta === null ? '—' : `${fmtNumber(data.max_delta)} ms`));
       grid.append(detailItem('จำนวนข้อ', fmtNumber(data.items_count)));
       grid.append(detailItem('เริ่ม', fmtDate(data.started_at)));
       grid.append(detailItem('จบ', fmtDate(data.finished_at)));
@@ -1205,11 +1207,11 @@
 
   async function handleRunAction(action, runId) {
     const configs = {
-      approve: { title: 'อนุมัติรอบเกม', text: 'ล้าง flag ของรอบนี้โดยไม่บันทึกคะแนน', okLabel: 'อนุมัติ', review: 'approve', save: false, danger: false, success: 'อนุมัติรอบแล้ว' },
-      'approve-save': { title: 'อนุมัติและบันทึกคะแนน', text: 'ล้าง flag และบันทึกคะแนนจากรอบนี้เข้าอันดับ', okLabel: 'อนุมัติ + บันทึก', review: 'approve', save: true, danger: false, success: 'อนุมัติและบันทึกคะแนนแล้ว' },
-      reject: { title: 'ยืนยันว่าเป็นบอท', text: 'คงสถานะ flag และไม่บันทึกคะแนนจากรอบนี้', okLabel: 'ยืนยันว่าเป็นบอท', review: 'reject', save: false, danger: true, success: 'ยืนยันว่าเป็นบอทแล้ว' },
-      flag: { title: 'ตั้ง flag ด้วยมือ', text: 'ทำเครื่องหมายรอบนี้ว่าสงสัยและไม่บันทึกคะแนน', okLabel: 'ตั้ง flag', review: 'flag', save: false, danger: true, success: 'ตั้ง flag แล้ว' },
-      terminate: { title: 'ยกเลิกรอบเกม', text: 'ปิดรอบที่กำลังเล่นทันทีและไม่บันทึกคะแนน', okLabel: 'ยกเลิกรอบ', review: 'terminate', save: false, danger: true, success: 'ยกเลิกรอบแล้ว' }
+      approve: { title: 'อนุมัติรอบเกม', text: 'ล้าง flag ไม่บันทึกคะแนน', okLabel: 'อนุมัติ', review: 'approve', save: false, danger: false, success: 'อนุมัติรอบแล้ว' },
+      'approve-save': { title: 'อนุมัติ + บันทึก', text: 'ล้าง flag + บันทึกเข้าอันดับ', okLabel: 'อนุมัติ + บันทึก', review: 'approve', save: true, danger: false, success: 'อนุมัติ + บันทึกแล้ว' },
+      reject: { title: 'ยืนยันว่าเป็นบอท', text: 'คง flag ไม่บันทึกคะแนนจากรอบนี้', okLabel: 'ยืนยันว่าเป็นบอท', review: 'reject', save: false, danger: true, success: 'ยืนยันว่าเป็นบอทแล้ว' },
+      flag: { title: 'ตั้ง flag ด้วยมือ', text: 'ทำเครื่องหมายสงสัย ไม่บันทึกคะแนน', okLabel: 'ตั้ง flag', review: 'flag', save: false, danger: true, success: 'ตั้ง flag แล้ว' },
+      terminate: { title: 'ยกเลิกรอบเกม', text: 'ปิดรอบทันที ไม่บันทึกคะแนน', okLabel: 'ยกเลิกรอบ', review: 'terminate', save: false, danger: true, success: 'ยกเลิกรอบแล้ว' }
     };
     const config = configs[action];
     if (!config) return;
@@ -1223,13 +1225,22 @@
     if (!reason) return;
 
     try {
-      await rpc('admin_run_review', {
+      const review = (password) => rpc('admin_run_review', {
         p_token: state.token,
         p_run_id: runId,
         p_action: config.review,
         p_note: reason,
-        p_save_score: config.save
+        p_save_score: config.save,
+        p_password: password || null
       });
+      const result = config.save
+        ? await requestPassword({
+            title: 'อนุมัติ + บันทึก',
+            text: 'ยืนยันรหัสผ่านแอดมินก่อนบันทึกคะแนน',
+            okLabel: 'ยืนยัน + บันทึก'
+          }, review)
+        : await review(null);
+      if (result === null) return;
       closeDialog($('runDetailDialog'));
       toast(config.success);
       await loadRuns({
@@ -1244,7 +1255,7 @@
   }
 
   async function loadSessions() {
-    showCommandResult('เซสชันที่ใช้งาน');
+    showCommandResult('เซสชัน');
     const body = $('commandResultBody');
     body.append(make('p', 'result-empty', 'กำลังโหลดข้อมูล…'));
     try {
@@ -1262,7 +1273,7 @@
   function renderSessions() {
     const body = $('commandResultBody');
     if (!state.sessions.length) {
-      body.append(make('p', 'result-empty', 'ไม่มีเซสชันที่ใช้งานอยู่'));
+      body.append(make('p', 'result-empty', 'ไม่มีเซสชันอยู่'));
       return;
     }
 
@@ -1296,7 +1307,7 @@
   }
 
   async function revokeSession(hash, username) {
-    const ok = await confirmAction('ตัดเซสชัน', `ตัดเซสชันของ ${username} ใช่หรือไม่?`, 'ตัดเซสชัน');
+    const ok = await confirmAction('ตัดเซสชัน', `ตัดเซสชัน ${username}?`, 'ตัดเซสชัน');
     if (!ok) return;
     try {
       await rpc('admin_revoke_session', { p_token: state.token, p_session_hash: hash });
@@ -1319,14 +1330,14 @@
       grid.append(detailItem('ผู้เล่นทั้งหมด', fmtNumber(data.player_count)));
       grid.append(detailItem('คะแนนเฉลี่ย', fmtNumber(data.average_score)));
       grid.append(detailItem('คะแนนสูงสุด', fmtNumber(data.highest_score)));
-      grid.append(detailItem('ผู้เล่นที่ถูกแบน', fmtNumber(data.banned_count)));
-      grid.append(detailItem('สถานะเซิร์ฟเวอร์', data.maintenance ? 'ปิดรับผู้เล่น' : 'เปิดใช้งานปกติ'));
-      grid.append(detailItem('ผู้ดูแลที่ใช้งาน', fmtNumber(data.admin_count)));
+      grid.append(detailItem('ผู้เล่นที่แบน', fmtNumber(data.banned_count)));
+      grid.append(detailItem('สถานะระบบ', data.maintenance ? 'ปิดรับผู้เล่น' : 'เปิดปกติ'));
+      grid.append(detailItem('แอดมินที่ใช้งาน', fmtNumber(data.admin_count)));
       grid.append(detailItem('รอบทั้งหมด', fmtNumber(data.total_runs)));
       grid.append(detailItem('รอบวันนี้', fmtNumber(data.runs_today)));
-      grid.append(detailItem('รอบที่กำลังเล่น', fmtNumber(data.active_runs)));
+      grid.append(detailItem('รอบเล่นอยู่', fmtNumber(data.active_runs)));
       grid.append(detailItem('รอบที่จบแล้ว', fmtNumber(data.finished_runs)));
-      grid.append(detailItem('รอบที่ถูก flag', fmtNumber(data.flagged_runs)));
+      grid.append(detailItem('รอบ flag', fmtNumber(data.flagged_runs)));
       grid.append(detailItem('flag วันนี้', fmtNumber(data.flagged_today)));
       grid.append(detailItem('เวลาเล่นเฉลี่ย', `${fmtNumber(data.avg_run_seconds)} วินาที`));
       card.append(grid);
@@ -1344,10 +1355,10 @@
     resetPasswordToggles();
     setMessage($('maintenanceMessage'), '');
     $('maintenanceDialogStatus').textContent = on
-      ? 'สถานะปัจจุบัน: ปิดรับผู้เล่นอยู่ — กรอกรหัสยืนยันเพื่อเปิดใช้งานเซิร์ฟเวอร์'
-      : 'สถานะปัจจุบัน: เปิดใช้งานปกติ — กรอกรหัสยืนยันเพื่อปิดรับผู้เล่นชั่วคราว';
+      ? 'ปิดรับผู้เล่นอยู่ — ใส่รหัสยืนยันเพื่อเปิดระบบ'
+      : 'เปิดปกติ — ใส่รหัสยืนยันเพื่อปิดรับชั่วคราว';
     const submit = $('maintenanceSubmit');
-    submit.textContent = on ? 'เปิดใช้งานเซิร์ฟเวอร์' : 'ปิดใช้งานเซิร์ฟเวอร์';
+    submit.textContent = on ? 'เปิดระบบ' : 'ปิดระบบ';
     submit.className = on ? 'button primary' : 'button danger';
     openDialog($('maintenanceDialog'));
     $('maintenancePassword').focus();
@@ -1358,7 +1369,7 @@
     if (state.maintenanceBusy) return;
     const password = $('maintenancePassword').value;
     if (!password) {
-      setMessage($('maintenanceMessage'), 'กรุณากรอกรหัสยืนยัน', 'error');
+      setMessage($('maintenanceMessage'), 'ใส่รหัสยืนยัน', 'error');
       $('maintenancePassword').focus();
       return;
     }
@@ -1379,8 +1390,8 @@
       $('maintenanceForm').reset();
       closeDialog($('maintenanceDialog'));
       toast(target
-        ? 'ปิดใช้งานเซิร์ฟเวอร์แล้ว ผู้เล่นจะเห็นหน้าปิดปรับปรุงชั่วคราว'
-        : 'เปิดใช้งานเซิร์ฟเวอร์แล้ว ผู้เล่นกลับมาเล่นได้ตามปกติ');
+        ? 'ปิดระบบแล้ว ผู้เล่นเห็นหน้าปิดระบบ'
+        : 'เปิดระบบแล้ว ผู้เล่นเล่นได้ปกติ');
     } catch (err) {
       fail(err, $('maintenanceMessage'));
     } finally {
@@ -1419,9 +1430,6 @@
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* scores                                                              */
-  /* ------------------------------------------------------------------ */
 
   async function loadScores() {
     setMessage($('dashboardMessage'), 'กำลังโหลดข้อมูล…', 'info');
@@ -1564,9 +1572,6 @@
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* banned                                                              */
-  /* ------------------------------------------------------------------ */
 
   async function loadBanned() {
     $('bannedBody').replaceChildren(loadingRow(5));
@@ -1593,7 +1598,7 @@
     const body = $('bannedBody');
     body.textContent = '';
     if (!state.bannedRows.length) {
-      body.append(emptyRow(5, state.bannedSearch ? 'ไม่พบผู้เล่นที่ตรงกับคำค้น' : 'ยังไม่มีผู้เล่นที่ถูกแบน'));
+      body.append(emptyRow(5, state.bannedSearch ? 'ไม่พบผู้เล่น' : 'ยังไม่มีผู้เล่นที่แบน'));
       return;
     }
     state.bannedRows.forEach((row) => {
@@ -1615,12 +1620,7 @@
     });
   }
 
-  /* ------------------------------------------------------------------ */
-  /* audit                                                               */
-  /* ------------------------------------------------------------------ */
 
-  // เก็บบรรทัดในบันทึกกิจกรรมไว้ไม่เกิน AUDIT_MAX_ROWS
-  // ถ้าเกิน ให้ลบแถวล่างสุด (รายการเก่าสุด) ทิ้ง
   function trimAuditRows() {
     const body = $('auditBody');
     while (body.rows.length > AUDIT_MAX_ROWS) body.deleteRow(-1);
@@ -1654,9 +1654,6 @@
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* admins                                                              */
-  /* ------------------------------------------------------------------ */
 
   async function loadAdmins() {
     $('adminsBody').replaceChildren(loadingRow(5));
@@ -1674,7 +1671,7 @@
     const body = $('adminsBody');
     body.textContent = '';
     if (!state.adminRows.length) {
-      body.append(emptyRow(5, 'ยังไม่มีผู้ดูแล'));
+      body.append(emptyRow(5, 'ยังไม่มีแอดมิน'));
       return;
     }
     const myId = state.admin && state.admin.user_id;
@@ -1703,7 +1700,15 @@
       toggle.disabled = row.user_id === myId;
       toggle.addEventListener('click', () => toggleAdminActive(row));
 
-      wrap.append(pwd, toggle);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'button danger small';
+      del.textContent = 'ลบ';
+      del.disabled = row.user_id === myId;
+      if (del.disabled) del.title = 'ลบตัวเองไม่ได้';
+      del.addEventListener('click', () => deleteAdmin(row));
+
+      wrap.append(pwd, toggle, del);
       td.append(wrap);
       tr.append(td);
       body.append(tr);
@@ -1713,13 +1718,26 @@
   async function toggleAdminActive(row) {
     const next = !row.is_active;
     const ok = await confirmAction(
-      next ? 'เปิดใช้งานผู้ดูแล' : 'ปิดใช้งานผู้ดูแล',
+      next ? 'เปิดแอดมิน' : 'ปิดแอดมิน',
       `${next ? 'เปิด' : 'ปิด'}ใช้งานบัญชี ${row.username} ใช่หรือไม่?`,
       next ? 'เปิดใช้งาน' : 'ปิดใช้งาน'
     );
     if (!ok) return;
     try {
-      await rpc('admin_set_admin_active', { p_token: state.token, p_user_id: row.user_id, p_active: next });
+      const result = await requestPassword(
+        {
+          title: next ? 'เปิดแอดมิน' : 'ปิดแอดมิน',
+          text: `ยืนยันรหัสผ่านเพื่อ${next ? 'เปิด' : 'ปิด'}บัญชี ${row.username}`,
+          okLabel: next ? 'เปิดใช้งาน' : 'ปิดใช้งาน'
+        },
+        (password) => rpc('admin_set_admin_active', {
+          p_token: state.token,
+          p_user_id: row.user_id,
+          p_active: next,
+          p_auth_password: password
+        })
+      );
+      if (result === null) return;
       toast(next ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว');
       await loadAdmins();
     } catch (err) {
@@ -1729,7 +1747,7 @@
 
   function openResetAdminDialog(row) {
     state.resetAdminTarget = row;
-    $('resetAdminTargetText').textContent = `ตั้งรหัสผ่านชั่วคราวใหม่ให้ ${row.username}`;
+    $('resetAdminTargetText').textContent = `ตั้งรหัสชั่วคราวให้ ${row.username}`;
     setMessage($('resetAdminMessage'), '');
     $('resetAdminPassword').value = '';
     resetPasswordToggles();
@@ -1737,9 +1755,29 @@
     $('resetAdminPassword').focus();
   }
 
-  /* ------------------------------------------------------------------ */
-  /* dialogs                                                             */
-  /* ------------------------------------------------------------------ */
+  async function deleteAdmin(row) {
+    const ok = await confirmAction(
+      'ลบบันชีแอดมิน',
+      `ลบ ${row.username} ออกจากระบบ?`,
+      'ลบ'
+    );
+    if (!ok) return;
+
+    state.deleteAdminTarget = row;
+    $('deleteAdminForm').reset();
+    resetPasswordToggles();
+    setMessage($('deleteAdminMessage'), '');
+    $('deleteAdminTargetText').textContent = `บัญชี: ${row.username} (${row.role})`;
+    openDialog($('deleteAdminDialog'));
+    $('deleteAdminOwnPassword').focus();
+  }
+
+  function cancelDeleteAdmin() {
+    if (state.deleteAdminBusy) return;
+    state.deleteAdminTarget = null;
+    closeDialog($('deleteAdminDialog'));
+  }
+
 
   function confirmAction(title, text, okLabel) {
     return new Promise((resolve) => {
@@ -1759,7 +1797,6 @@
     if (resolve) resolve(value);
   }
 
-  /* ---- password confirmation for destructive actions ---- */
 
   function isInvalidPassword(err) {
     return String((err && (err.message || err.error_description)) || '').includes('invalid_password');
@@ -1809,7 +1846,7 @@
       request.resolve(result);
     } catch (err) {
       if (isInvalidPassword(err)) {
-        setMessage($('actionPasswordMessage'), 'รหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง', 'error');
+        setMessage($('actionPasswordMessage'), 'รหัสผ่านไม่ถูกต้อง', 'error');
         input.value = '';
         input.focus();
         return;
@@ -1854,14 +1891,11 @@
     state.banTarget = userId;
     setMessage($('banMessage'), '');
     $('banReason').value = '';
-    $('banTargetText').textContent = `ผู้เล่น: ${name || 'ไม่ระบุชื่อ'}`;
+    $('banTargetText').textContent = `ผู้เล่น: ${name || 'ไม่ระบุ'}`;
     openDialog($('banDialog'));
     $('banReason').focus();
   }
 
-  /* ------------------------------------------------------------------ */
-  /* events                                                              */
-  /* ------------------------------------------------------------------ */
 
   function bindEvents() {
     $('loginForm').addEventListener('submit', onLogin);
@@ -1874,8 +1908,6 @@
     $('maintenanceForm').addEventListener('submit', onMaintenanceSubmit);
     $('maintenanceCancel').addEventListener('click', () => closeDialog($('maintenanceDialog')));
 
-    // Settings menu (top-right): close after choosing an item,
-    // on outside click, or with Escape.
     const settingsMenu = $('settingsMenu');
     if (settingsMenu) {
       settingsMenu.addEventListener('click', (event) => {
@@ -1963,6 +1995,7 @@
     $('banForm').addEventListener('submit', onBan);
     $('adminForm').addEventListener('submit', onAddAdmin);
     $('resetAdminForm').addEventListener('submit', onResetAdminPassword);
+    $('deleteAdminForm').addEventListener('submit', onDeleteAdminSubmit);
     $('specialPasswordForm').addEventListener('submit', onSetSpecialPassword);
     $('specialPasswordButton').addEventListener('click', openSpecialPasswordDialog);
 
@@ -1972,6 +2005,11 @@
     $('banCancel').addEventListener('click', () => closeDialog($('banDialog')));
     $('adminCancel').addEventListener('click', () => closeDialog($('adminDialog')));
     $('resetAdminCancel').addEventListener('click', () => closeDialog($('resetAdminDialog')));
+    $('deleteAdminCancel').addEventListener('click', cancelDeleteAdmin);
+    $('deleteAdminDialog').addEventListener('cancel', (event) => {
+      event.preventDefault();
+      cancelDeleteAdmin();
+    });
 
     $('commandGroups').addEventListener('click', (event) => {
       const card = event.target.closest('button[data-command]');
@@ -2034,9 +2072,6 @@
     });
   }
 
-  /* ------------------------------------------------------------------ */
-  /* actions                                                             */
-  /* ------------------------------------------------------------------ */
 
   async function onLogin(event) {
     event.preventDefault();
@@ -2049,20 +2084,20 @@
     const button = $('loginForm').querySelector('button[type="submit"]');
     button.disabled = true;
     button.textContent = 'กำลังตรวจสอบ…';
-    setMessage($('loginMessage'), 'กำลังตรวจสอบบัญชี…', 'info');
+    setMessage($('loginMessage'), 'กำลังตรวจสอบ…', 'info');
     try {
       const result = await rpc('admin_login', { p_username: username, p_password: password });
       if (!result || result.ok !== true) {
         const key = result && result.error;
-        let text = MESSAGES[key] || 'เข้าสู่ระบบไม่สำเร็จ';
+        let text = MESSAGES[key] || 'ล็อกอินไม่สำเร็จ';
         if (key === 'invalid_credentials' && typeof result.attempts_left === 'number') {
-          text += ` (เหลือ ${result.attempts_left} ครั้งก่อนถูกล็อก)`;
+          text += ` (เหลือ ${result.attempts_left} ครั้ง)`;
         }
         setMessage($('loginMessage'), text, 'error');
         return;
       }
       state.token = result.token;
-      state.admin = result;
+      state.admin = null;
       persistSession(result.token, result.expires_at);
       scheduleSession(result.expires_at);
       $('loginForm').reset();
@@ -2089,7 +2124,7 @@
     persistSession(null, null);
     try {
       if (token) await rpc('admin_logout', { p_token: token });
-    } catch (error) { /* session may already be gone */ }
+    } catch (error) {  }
     $('loginForm').reset();
     $('passwordWarning').hidden = true;
     showLogin('ออกจากระบบแล้ว', 'success');
@@ -2106,7 +2141,7 @@
       return;
     }
     if (next !== again) {
-      setMessage($('passwordMessage'), 'รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน', 'error');
+      setMessage($('passwordMessage'), 'รหัสผ่านใหม่ไม่ตรงกัน', 'error');
       return;
     }
     if (!special) {
@@ -2140,7 +2175,7 @@
     const next = $('newSpecial').value.trim();
     const again = $('confirmSpecial').value.trim();
     if (!current || !currentSpecial) {
-      setMessage($('specialPasswordMessage'), 'กรุณากรอกรหัสผ่านปัจจุบันและรหัสผ่านพิเศษปัจจุบัน', 'error');
+      setMessage($('specialPasswordMessage'), 'ใส่รหัสผ่านและรหัสพิเศษปัจจุบัน', 'error');
       return;
     }
     if (next.length < 4) {
@@ -2148,7 +2183,7 @@
       return;
     }
     if (next !== again) {
-      setMessage($('specialPasswordMessage'), 'รหัสผ่านพิเศษใหม่ทั้งสองช่องไม่ตรงกัน', 'error');
+      setMessage($('specialPasswordMessage'), 'รหัสพิเศษไม่ตรงกัน', 'error');
       return;
     }
     const button = $('specialPasswordForm').querySelector('button[type="submit"]');
@@ -2181,11 +2216,21 @@
     const button = $('renameForm').querySelector('button[type="submit"]');
     button.disabled = true;
     try {
-      await rpc('admin_rename_player', {
-        p_token: state.token,
-        p_user_id: state.renameTarget,
-        p_name: name
-      });
+      const result = await requestPassword(
+        {
+          title: 'เปลี่ยนชื่อผู้เล่น',
+          text: `เปลี่ยนชื่อเป็น ${name}`,
+          okLabel: 'เปลี่ยนชื่อ',
+          danger: false
+        },
+        (password) => rpc('admin_rename_player', {
+          p_token: state.token,
+          p_user_id: state.renameTarget,
+          p_name: name,
+          p_password: password
+        })
+      );
+      if (result === null) return;
       closeDialog($('renameDialog'));
       toast('เปลี่ยนชื่อผู้เล่นแล้ว');
       state.renameTarget = null;
@@ -2214,7 +2259,7 @@
       const done = await requestPassword(
         {
           title: 'แบนผู้เล่น',
-          text: 'ผู้เล่นจะถูกบล็อกไม่ให้บันทึกคะแนนจนกว่าจะปลดแบน',
+          text: 'บล็อกส่งคะแนนจนกว่าจะปลดแบน',
           okLabel: 'แบน'
         },
         (password) => rpc('admin_ban_player', {
@@ -2247,14 +2292,24 @@
     const button = $('adminForm').querySelector('button[type="submit"]');
     button.disabled = true;
     try {
-      await rpc('admin_add_admin', {
-        p_token: state.token,
-        p_username: username,
-        p_password: password,
-        p_role: role
-      });
+      const result = await requestPassword(
+        {
+          title: 'เพิ่มแอดมิน',
+          text: `ยืนยันรหัสผ่านเพื่อสร้าง ${username} (${role})`,
+          okLabel: 'เพิ่มแอดมิน',
+          danger: false
+        },
+        (authPassword) => rpc('admin_add_admin', {
+          p_token: state.token,
+          p_username: username,
+          p_password: password,
+          p_role: role,
+          p_auth_password: authPassword
+        })
+      );
+      if (result === null) return;
       closeDialog($('adminDialog'));
-      toast('เพิ่มผู้ดูแลแล้ว');
+      toast('เพิ่มแอดมินแล้ว');
       await loadAdmins();
     } catch (err) {
       fail(err, $('adminMessage'));
@@ -2275,11 +2330,20 @@
     const button = $('resetAdminForm').querySelector('button[type="submit"]');
     button.disabled = true;
     try {
-      await rpc('admin_reset_admin_password', {
-        p_token: state.token,
-        p_user_id: target.user_id,
-        p_password: password
-      });
+      const result = await requestPassword(
+        {
+          title: 'รีเซ็ตรหัสผ่านแอดมิน',
+          text: `ยืนยันรหัสผ่านเพื่อรีเซ็ตรหัสผ่าน ${target.username}`,
+          okLabel: 'รีเซ็ต'
+        },
+        (authPassword) => rpc('admin_reset_admin_password', {
+          p_token: state.token,
+          p_user_id: target.user_id,
+          p_password: password,
+          p_auth_password: authPassword
+        })
+      );
+      if (result === null) return;
       closeDialog($('resetAdminDialog'));
       toast(`รีเซ็ตรหัสผ่านของ ${target.username} แล้ว`);
       state.resetAdminTarget = null;
@@ -2291,13 +2355,71 @@
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* CSV export                                                          */
-  /* ------------------------------------------------------------------ */
+  async function onDeleteAdminSubmit(event) {
+    event.preventDefault();
+    const target = state.deleteAdminTarget;
+    if (!target || state.deleteAdminBusy) return;
+
+    const own = $('deleteAdminOwnPassword').value;
+    const special = $('deleteAdminSpecialPassword').value.trim();
+    const maintenance = $('deleteAdminMaintenancePassword').value.trim();
+    if (!own || !special || !maintenance) {
+      setMessage($('deleteAdminMessage'), 'ใส่รหัสทั้ง 3 ช่อง', 'error');
+      if (!own) $('deleteAdminOwnPassword').focus();
+      else if (!special) $('deleteAdminSpecialPassword').focus();
+      else $('deleteAdminMaintenancePassword').focus();
+      return;
+    }
+
+    const button = $('deleteAdminSubmit');
+    const cancel = $('deleteAdminCancel');
+    state.deleteAdminBusy = true;
+    button.disabled = true;
+    cancel.disabled = true;
+    setMessage($('deleteAdminMessage'), 'กำลังลบ…', 'info');
+    try {
+      await rpc('admin_delete_admin', {
+        p_token: state.token,
+        p_user_id: target.user_id,
+        p_auth_password: own,
+        p_special_password: special,
+        p_maintenance_password: maintenance
+      });
+      state.deleteAdminTarget = null;
+      closeDialog($('deleteAdminDialog'));
+      toast(`ลบ ${target.username} แล้ว`);
+      await loadAdmins();
+    } catch (err) {
+      const raw = String((err && (err.message || err.error_description)) || '');
+      if (raw.includes('invalid_password')) {
+        setMessage($('deleteAdminMessage'), MESSAGES.invalid_password, 'error');
+        $('deleteAdminOwnPassword').value = '';
+        $('deleteAdminOwnPassword').focus();
+        return;
+      }
+      if (raw.includes('invalid_special_password')) {
+        setMessage($('deleteAdminMessage'), MESSAGES.invalid_special_password, 'error');
+        $('deleteAdminSpecialPassword').value = '';
+        $('deleteAdminSpecialPassword').focus();
+        return;
+      }
+      if (raw.includes('invalid_maintenance_password')) {
+        setMessage($('deleteAdminMessage'), MESSAGES.invalid_maintenance_password, 'error');
+        $('deleteAdminMaintenancePassword').value = '';
+        $('deleteAdminMaintenancePassword').focus();
+        return;
+      }
+      fail(err, $('deleteAdminMessage'));
+    } finally {
+      state.deleteAdminBusy = false;
+      button.disabled = false;
+      cancel.disabled = false;
+    }
+  }
+
 
   function csvCell(value) {
     let text = value === null || value === undefined ? '' : String(value);
-    // กัน CSV formula injection — ชื่อผู้เล่นอาจขึ้นต้นด้วย = + - @
     if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
     return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   }
@@ -2357,9 +2479,6 @@
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* bootstrap                                                           */
-  /* ------------------------------------------------------------------ */
 
   async function openSession() {
     const data = await rpc('admin_dashboard', {
@@ -2389,12 +2508,27 @@
     bindPasswordToggles();
 
     if (!CONFIG.url || !CONFIG.publishableKey ||
-        CONFIG.url.includes('YOUR_PROJECT_REF') || CONFIG.publishableKey.includes('YOUR_SUPABASE')) {
-      setMessage($('loginMessage'), 'ยังไม่ได้ตั้งค่า Supabase ใน database-config.js', 'error');
+        CONFIG.url.includes('YOUR_PROJECT_REF') || CONFIG.publishableKey.includes('YOUR_SUPABASE') ||
+        !/^https:\/\//.test(CONFIG.url)) {
+      setMessage($('loginMessage'), 'ยังไม่ตั้งค่า Supabase ใน database-config.js', 'error');
       return;
     }
+    const clientKey = String(CONFIG.publishableKey);
+    if (/service_role|sb_secret/i.test(clientKey)) {
+      setMessage($('loginMessage'), 'ห้ามใช้ service_role key ฝั่ง client', 'error');
+      return;
+    }
+    if (clientKey.startsWith('eyJ')) {
+      try {
+        const payload = JSON.parse(atob(clientKey.split('.')[1] || ''));
+        if (payload && payload.role === 'service_role') {
+          setMessage($('loginMessage'), 'ห้ามใช้ service_role key ฝั่ง client', 'error');
+          return;
+        }
+      } catch (error) {  }
+    }
     if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-      setMessage($('loginMessage'), 'โหลด Supabase client ไม่สำเร็จ ตรวจการเชื่อมต่ออินเทอร์เน็ต', 'error');
+      setMessage($('loginMessage'), 'โหลด Supabase ไม่สำเร็จ ตรวจอินเทอร์เน็ต', 'error');
       return;
     }
 
@@ -2407,7 +2541,7 @@
     try {
       saved = sessionStorage.getItem(TOKEN_KEY);
       savedExpiry = sessionStorage.getItem(EXPIRES_KEY);
-    } catch (error) { /* ignore */ }
+    } catch (error) {  }
     if (!saved) return;
 
     if (savedExpiry) {
@@ -2423,7 +2557,7 @@
     }
 
     state.token = saved;
-    setMessage($('loginMessage'), 'กำลังตรวจสอบเซสชัน…', 'info');
+    setMessage($('loginMessage'), 'กำลังเช็คเซสชัน…', 'info');
     openSession().catch((err) => {
       handleLoginFailure(err);
     });
