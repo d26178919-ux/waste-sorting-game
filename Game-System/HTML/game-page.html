@@ -9,21 +9,18 @@
 <meta property="og:type" content="website">
 <meta property="og:description" content="ฝึกแยกขยะ 4 สีถัง มีขยะมากกว่า 100 ชนิด เล่นฟรีบนมือถือและคอมพิวเตอร์">
 <meta name="theme-color" content="#000000">
-<!-- External JavaScript dependencies -->
-<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://zflcbteweobjpncesfpa.supabase.co; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js" integrity="sha384-HAH79XdRvHr6axVGh4xQWVCp14kcd32bNk4Xu0sHDHtFQ42n6BAM8ykvB47dGz6D" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous"></script>
 <script src="../JS/database-config.js"></script>
 <script src="../JS/database-client.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
-<!-- CSS styles -->
-<link rel="stylesheet" href="../CSS/game-styles.css?v=5">
+<link rel="stylesheet" href="../CSS/game-styles.css?v=6">
 </head>
-<!-- HTML page structure -->
 <body class="flex flex-col items-center">
 
-<!-- Maintenance screen (shown when the admin disables the server) -->
 <div id="maintenance" class="maintenance-screen" hidden role="alertdialog" aria-modal="true" aria-labelledby="maintenanceTitle" aria-describedby="maintenanceText">
   <div class="maintenance-inner">
     <p class="maintenance-code" aria-hidden="true">503</p>
@@ -44,7 +41,6 @@
   </div>
 </div>
 
-<!-- Start screen -->
 <div id="start" class="fixed inset-0 z-20 overflow-y-auto" style="background:#000">
   <canvas id="bgc" class="fixed inset-0 w-full h-full pointer-events-none"></canvas>
   <div class="fixed inset-0 pointer-events-none" style="background:rgba(0,0,0,.35)"></div>
@@ -102,7 +98,6 @@
   <footer class="developer-credit"><span>DeveloperGroup: IS-Group4</span></footer>
 </div>
 
-<!-- Game -->
 <div id="game" class="hidden w-full max-w-xl mx-auto p-3 flex-col min-h-screen justify-between">
   <div>
     <div class="flex items-end justify-between gap-3 mb-2">
@@ -145,7 +140,6 @@
   </div>
 </div>
 
-<!-- End screen -->
 <div id="end" class="hidden w-full max-w-xl mx-auto px-4 py-12 text-center flex-col items-center justify-center gap-6 min-h-screen">
   <h2 class="heading-4">สิ้นสุดเกม</h2>
   <div class="flex flex-col items-center gap-2">
@@ -201,7 +195,6 @@
   <p id="lbMyRank" class="lb-my-rank" role="status" aria-live="polite" hidden></p>
 </dialog>
 
-<!-- JavaScript game behavior -->
-<script src="../JS/game-logic.js?v=3"></script>
+<script src="../JS/game-logic.js?v=6"></script>
 </body>
 </html>
