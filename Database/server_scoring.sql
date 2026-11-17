@@ -691,6 +691,10 @@ begin
   if v_uid is null then
     raise exception using errcode = '28000', message = 'authentication_required';
   end if;
+  -- กันส่งคะแนนต่อหลังแอดมินปิดระบบกลางรอบ (เหมือน game_start/game_answer)
+  if public.game_server_closed() then
+    raise exception using errcode = '55000', message = 'maintenance_mode';
+  end if;
   if char_length(v_name) < 1 or char_length(v_name) > 16 then
     raise exception using errcode = '22023', message = 'invalid_name';
   end if;
@@ -723,9 +727,10 @@ begin
 
   -- -----------------------------------------------------------------------
   -- ตรวจจับบอทอย่างง่ายจากจังหวะตอบ
-  --   เงื่อนไข: ตอบอย่างน้อย 51 ข้อ, ตอบถูกทุกข้อ,
-  --            ส่วนเบี่ยงเบนมาตรฐานของเวลาต่อข้อ < 20ms และเฉลี่ย < 700ms
-  --   มนุษย์ทำไม่ได้จริงเพราะ reaction time ไม่คงที่ขนาดนั้น
+  --   เงื่อนไข: ตอบอย่างน้อย 51 ข้อ, ตอบถูกทุกข้อ และเข้าข่ายข้อใดด้านล่างนี้
+  --    - SD < 20ms และเฉลี่ย < 700ms (จังหวะสม่ำเสมอเกินมนุษย์)
+  --    - ช่วง min-max แคบ < 1200ms และเฉลี่ย < 1100ms
+  --      (กันบอทที่สุ่ม delay ให้ SD สูง แต่ยังไม่มีจังหวะหยุดอ่านเหมือนมนุษย์)
   -- -----------------------------------------------------------------------
   v_count := v_run.answered;
   if v_count >= 51 and v_run.right_count = v_count and v_run.delta_sum > 0 then
@@ -733,7 +738,9 @@ begin
     v_var := greatest(0, (v_run.delta_sumsq / v_count) - (v_mean * v_mean));
     v_sd := sqrt(v_var);
 
-    if v_sd < 20 and v_mean < 700 then
+    if (v_sd < 20 and v_mean < 700)
+       or (coalesce(v_run.max_delta, 0) - coalesce(v_run.min_delta, 0) < 1200
+           and v_mean < 1100) then
       v_flagged := true;
       v_flag := 'bot_timing';
     end if;
