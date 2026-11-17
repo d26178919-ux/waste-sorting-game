@@ -1,35 +1,7 @@
--- ===========================================================================
---  ระบบแอดมินฉบับสมบูรณ์ — Waste Sorting Game
---  วิธีใช้: Supabase Dashboard > SQL Editor > วางทั้งไฟล์ > Run (ครั้งเดียว)
---  ต้องรันหลัง Database/setup.sql และ Database/server_scoring.sql
---  รันซ้ำได้ (idempotent) — รหัสผ่านจะถูก hash เฉพาะแถวที่ยังเป็น plaintext
---  ไฟล์นี้ไม่ seed รหัสผ่าน default: ดูวิธีสร้างผู้ดูแลคนแรกที่ข้อ 12 ด้านล่าง
---
---  สิ่งที่ได้:
---   * รหัสผ่านแอดมินเก็บเป็น bcrypt hash (pgcrypto) ไม่เก็บ plaintext
---   * session token แบบสุ่ม 32 byte + หมดอายุ 8 ชั่วโมง (เก็บเฉพาะ hash)
---   * จำกัดการเดารหัสผ่าน 5 ครั้ง / ล็อก 15 นาที
---   * audit log ทุกการกระทำของแอดมิน
---   * แบน/ปลดแบนผู้เล่น (บล็อกการส่งคะแนนผ่าน trigger)
---   * ค้นหา / เรียง / แบ่งหน้า / ลบ / รีเซ็ต / ตั้งคะแนน / เปลี่ยนชื่อผู้เล่น
---   * ตรวจรอบเกมที่ถูก anti-bot flag + อนุมัติ/ยืนยันว่าเป็นบอท
---   * เปลี่ยนรหัสผ่าน + จัดการบัญชีแอดมิน + role (owner / editor / viewer)
---   * ดู/ตัด session ของแอดมิน (owner)
---   * ปิด/เปิดใช้งานเซิร์ฟเวอร์ชั่วคราว (owner / editor) พร้อมรหัสยืนยัน bcrypt
---     — ผู้เล่นจะเริ่มรอบ/ตอบข้อไม่ได้ระหว่างปิด
--- ===========================================================================
 
--- ---------------------------------------------------------------------------
--- 0) Extension
--- ---------------------------------------------------------------------------
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
 
--- ---------------------------------------------------------------------------
--- 0.1) ลบ RPC เก่าที่ค้างจาก deployment รุ่นก่อน (ไม่มีในระบบปัจจุบัน)
---      ตัวอย่างเช่น admin_clear_login_attempt ที่ล้าง lockout ได้
---      ถ้าทิ้งไว้จะถูก security_check.sql ตรวจจับ และอาจถูกเรียกจาก anon ได้
--- ---------------------------------------------------------------------------
 do $$
 declare
   r record;
@@ -50,9 +22,6 @@ begin
   end loop;
 end $$;
 
--- ---------------------------------------------------------------------------
--- 1) ตาราง admin_users (รองรับทั้งการติดตั้งใหม่และการอัปเกรดของเดิม)
--- ---------------------------------------------------------------------------
 create table if not exists public.admin_users (
   user_id     uuid primary key default gen_random_uuid(),
   username    text not null,
@@ -63,7 +32,6 @@ create table if not exists public.admin_users (
   must_change_password boolean not null default false,
   created_at  timestamptz not null default now(),
   last_login_at timestamptz,
-  -- legacy: เก็บไว้เพื่อความเข้ากันได้กับ setup.sql เดิม แต่จะถูกเคลียร์เป็น ''
   password    text
 );
 
@@ -75,15 +43,11 @@ alter table public.admin_users add column if not exists created_at timestamptz n
 alter table public.admin_users add column if not exists last_login_at timestamptz;
 alter table public.admin_users add column if not exists password text;
 
--- คอลัมน์ legacy ต้องไม่บล็อกการเพิ่มแอดมินใหม่
 alter table public.admin_users alter column password drop not null;
 
--- ฐานข้อมูลรุ่นก่อนอาจผูก user_id กับ auth.users และไม่มีค่าเริ่มต้น
--- ทำให้ insert แอดมินใหม่ล้มเหลว (null value / foreign key violation)
 alter table public.admin_users drop constraint if exists admin_users_user_id_fkey;
 alter table public.admin_users alter column user_id set default gen_random_uuid();
 
--- แปลงรหัสผ่าน plaintext เดิมให้เป็น hash แล้วลบทิ้ง (รวมกรณี hash เดิมไม่ใช่ bcrypt)
 update public.admin_users
    set password_hash = case
          when password_hash ~ '^\$2[aby]\$\d{2}\$' then password_hash
@@ -93,7 +57,6 @@ update public.admin_users
        must_change_password = true
   where coalesce(password, '') <> '';
 
--- ห้ามมี plaintext ค้างในตารางอีกในอนาคต
 do $$
 begin
   if not exists (
@@ -105,7 +68,6 @@ begin
   end if;
 end $$;
 
--- ถ้าอัปเกรดจากระบบเดิม (มีแต่ role editor) ให้มี owner อย่างน้อย 1 คน
 update public.admin_users
    set role = 'owner'
  where user_id = (
@@ -122,11 +84,6 @@ alter table public.admin_users enable row level security;
 revoke all on public.admin_users from public, anon, authenticated;
 grant select on public.admin_users to service_role;
 
--- ---------------------------------------------------------------------------
--- 2) ตารางสนับสนุน
--- ---------------------------------------------------------------------------
--- ค่าตั้งของระบบ (singleton 1 แถว) — เก็บเฉพาะ bcrypt hash ของ "รหัสผ่านพิเศษ"
--- ไม่มีทางอ่านค่านี้ออกจากฝั่ง client ได้ (RLS + revoke ทั้งหมด)
 create table if not exists public.admin_settings (
   id                    boolean primary key default true,
   special_password_hash text not null,
@@ -135,9 +92,6 @@ create table if not exists public.admin_settings (
   constraint admin_settings_singleton check (id)
 );
 
--- ฐานข้อมูลรุ่นก่อนอาจเก็บ "รหัสผ่านพิเศษ" เป็น plaintext (หรือค่าเก่าที่ไม่ใช่ bcrypt)
--- ทำให้ pgcrypto โยน error "invalid salt" ตอนตรวจรหัส
--- แปลงค่าเก่าให้เป็น bcrypt hash โดยคงรหัสเดิมไว้ (ทำครั้งเดียว)
 update public.admin_settings
    set special_password_hash = extensions.crypt(special_password_hash, extensions.gen_salt('bf', 10)),
        updated_at = now()
@@ -145,9 +99,6 @@ update public.admin_settings
    and btrim(special_password_hash) <> ''
    and special_password_hash !~ '^\$2[aby]\$\d{2}\$';
 
--- สถานะเซิร์ฟเวอร์เกม (singleton) — ใช้ปิด/เปิดรับผู้เล่นชั่วคราว
--- รหัสยืนยันเก็บเป็น bcrypt hash และตรวจฝั่งฐานข้อมูลเท่านั้น
--- ไฟล์นี้ไม่ seed รหัสยืนยัน: ตั้งค่าครั้งแรกด้วย SQL ที่ข้อ 12 ด้านล่าง
 create table if not exists public.game_server_settings (
   id                        boolean primary key default true,
   maintenance               boolean not null default false,
@@ -165,7 +116,6 @@ insert into public.game_server_settings (id, maintenance)
 values (true, false)
 on conflict (id) do nothing;
 
--- กันกรณีค่าเก่าเป็น plaintext (จะทำให้ crypt โยน "invalid salt")
 update public.game_server_settings
    set maintenance_password_hash = extensions.crypt(maintenance_password_hash, extensions.gen_salt('bf', 10)),
        updated_at = now()
@@ -193,7 +143,6 @@ create table if not exists public.admin_login_attempts (
 create index if not exists admin_login_attempts_updated_idx
   on public.admin_login_attempts (updated_at);
 
--- rate limit ตาม IP (เก็บแค่ hash ของ IP ไม่เก็บ IP ดิบ) เพื่อกันโจมตีแบบกระจายหลาย username
 create table if not exists public.admin_login_ip_attempts (
   ip_hash         text primary key,
   fail_count      integer not null default 0,
@@ -237,11 +186,6 @@ revoke all on public.admin_audit_log from public, anon, authenticated;
 revoke all on public.admin_settings from public, anon, authenticated;
 revoke all on public.game_server_settings from public, anon, authenticated;
 
--- ---------------------------------------------------------------------------
--- 3) บล็อกการส่งคะแนนของผู้เล่นที่ถูกแบน
---    ใช้ trigger บน scores เพื่อไม่ต้องเขียน submit_score() ใหม่ทั้งก้อน
---    ฟังก์ชันของแอดมินจะ set_config('wsg.admin_bypass','on') เพื่อข้ามการบล็อก
--- ---------------------------------------------------------------------------
 create or replace function public.block_banned_player_writes()
 returns trigger
 language plpgsql
@@ -264,9 +208,6 @@ create trigger scores_block_banned
   before insert or update on public.scores
   for each row execute function public.block_banned_player_writes();
 
--- ---------------------------------------------------------------------------
--- 4) ตัวช่วยภายใน (ไม่เปิดให้ client เรียก)
--- ---------------------------------------------------------------------------
 create or replace function public.admin_assert_session(p_token text)
 returns public.admin_users
 language plpgsql
@@ -277,7 +218,6 @@ declare
   v_admin public.admin_users;
   v_hash  text;
 begin
-  -- จำกัดความยาว token ก่อน hash เพื่อกันการยิงสตริงขนาดใหญ่เข้ามาโดยไม่จำเป็น
   if p_token is null or char_length(p_token) < 32 or char_length(p_token) > 256 then
     raise exception using errcode = '28000', message = 'invalid_session';
   end if;
@@ -316,9 +256,6 @@ begin
 end;
 $$;
 
--- ใช้กับ RPC ที่ "เขียนข้อมูล" หรืออ่านข้อมูลอ่อนไหว: บังคับให้เปลี่ยนรหัสผ่านก่อน
--- (admin_dashboard / admin_change_password / admin_logout ยังใช้งานได้เพื่อให้ UI
---  พาไปหน้าเปลี่ยนรหัสผ่านได้)
 create or replace function public.admin_assert_ready(p_admin public.admin_users)
 returns void
 language plpgsql
@@ -332,8 +269,6 @@ begin
 end;
 $$;
 
--- ยืนยันรหัสผ่านของบัญชีแอดมินที่ล็อกอินอยู่ ก่อนทำรายการที่ย้อนกลับยาก
--- (ตั้ง/รีเซ็ต/ลบคะแนน, แบน/ปลดแบน, จัดการบัญชีแอดมิน, ลบบัญชีแอดมิน)
 create or replace function public.admin_assert_password(
   p_admin    public.admin_users,
   p_password text
@@ -349,7 +284,6 @@ begin
     raise exception using errcode = '55000', message = 'password_not_configured';
   end if;
 
-  -- bcrypt ใช้ได้สูงสุด 72 byte อยู่แล้ว การจำกัดความยาวช่วยกัน input ขนาดใหญ่
   if char_length(coalesce(p_password, '')) > 256 then
     raise exception using errcode = '28P01', message = 'invalid_password';
   end if;
@@ -376,9 +310,6 @@ as $$
   values (p_admin_id, p_action, p_target, p_details);
 $$;
 
--- ---------------------------------------------------------------------------
--- 5) เข้าสู่ระบบ / ออกจากระบบ
--- ---------------------------------------------------------------------------
 create or replace function public.admin_login(p_username text, p_password text)
 returns jsonb
 language plpgsql
@@ -393,7 +324,6 @@ declare
   v_token    text;
   v_fail     integer;
   v_expires  timestamptz := now() + interval '8 hours';
-  -- hash หลอกสำหรับเทียบเมื่อไม่พบผู้ใช้ เพื่อให้เวลาตอบใกล้เคียงกรณีมีผู้ใช้
   v_dummy    constant text := '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
   v_headers  jsonb := nullif(current_setting('request.headers', true), '')::jsonb;
   v_ip       text;
@@ -404,20 +334,14 @@ begin
     return jsonb_build_object('ok', false, 'error', 'missing_credentials');
   end if;
 
-  -- จำกัดความยาวก่อนแตะตาราง เพื่อกันการยิง username/รหัสผ่านขนาดใหญ่
   if char_length(v_key) > 64 or char_length(p_password) > 256 then
     return jsonb_build_object('ok', false, 'error', 'invalid_credentials');
   end if;
 
-  -- ล้างข้อมูลเก่าทุกครั้ง ไม่ใช่เฉพาะตอนล็อกอินผิด
   delete from public.admin_login_attempts where updated_at < now() - interval '1 hour';
   delete from public.admin_login_ip_attempts where updated_at < now() - interval '1 hour';
   delete from public.admin_sessions where expires_at <= now();
 
-  -- rate limit ตาม IP (hash ไว้ ไม่เก็บ IP ดิบในฐานข้อมูล)
-  -- เชื่อเฉพาะ cf-connecting-ip ที่ reverse proxy (Cloudflare) เขียนทับจริง
-  -- ห้ามใช้ x-forwarded-for / x-real-ip เพราะ client ส่ง header ปลอมได้
-  -- ถ้าไม่มี header นี้ให้ข้าม bucket (ยังเหลือ lockout ต่อ username 5 ครั้ง)
   v_ip := nullif(btrim(coalesce(v_headers ->> 'cf-connecting-ip', '')), '');
   if v_ip is not null then
     v_ip_hash := encode(extensions.digest(v_ip, 'sha256'), 'hex');
@@ -440,7 +364,6 @@ begin
   select * into v_attempt from public.admin_login_attempts where username = v_key;
   if found and v_attempt.locked_until is not null then
     if v_attempt.locked_until > now() then
-      -- คืนค่าแทนการ raise เพราะ raise จะ rollback การนับครั้งที่ผิด
       return jsonb_build_object(
         'ok', false,
         'error', 'too_many_attempts',
@@ -461,7 +384,6 @@ begin
      and v_admin.password_hash ~ '^\$2[aby]\$\d{2}\$' then
     v_ok := (extensions.crypt(p_password, v_admin.password_hash) = v_admin.password_hash);
   else
-    -- ไม่พบผู้ใช้ / hash ไม่ถูกต้อง: เผาเวลาเท่ากับ bcrypt และไม่มีทางเทียบ plaintext
     perform extensions.crypt(p_password, v_dummy);
   end if;
 
@@ -540,9 +462,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 6) Dashboard: สถิติ + ตารางคะแนน (ค้นหา / เรียง / แบ่งหน้า / กรองแบน)
--- ---------------------------------------------------------------------------
 create or replace function public.admin_dashboard(
   p_token  text,
   p_search text default '',
@@ -644,9 +563,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 7) จัดการคะแนนผู้เล่น
--- ---------------------------------------------------------------------------
 drop function if exists public.admin_delete_score(text, uuid, text);
 
 create or replace function public.admin_delete_score(
@@ -679,7 +595,6 @@ begin
     raise exception using errcode = 'P0002', message = 'player_not_found';
   end if;
 
-  -- ไม่ทิ้ง ban ค้างไว้แบบไม่มีแถวคะแนนให้ปลดแบนจากหน้าแอดมิน
   delete from public.banned_players where user_id = p_user_id;
 
   perform public.admin_log(v_admin.user_id, 'delete_score', p_user_id,
@@ -732,9 +647,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 7.1) ตั้งคะแนนใหม่ (เฉพาะ owner) — ต้องยืนยันรหัสผ่าน + มีเหตุผล + เก็บ audit
--- ---------------------------------------------------------------------------
 drop function if exists public.admin_set_score(text, uuid, integer, text);
 
 create or replace function public.admin_set_score(
@@ -800,9 +712,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 7.2) ค้นหา / โปรไฟล์ผู้เล่น (ทุก role อ่านได้)
--- ---------------------------------------------------------------------------
 create or replace function public.admin_player_search(
   p_token  text,
   p_query  text default '',
@@ -932,9 +841,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 7.3) ประวัติรอบเกมของผู้เล่น (ทุก role อ่านได้)
--- ---------------------------------------------------------------------------
 create or replace function public.admin_player_runs(
   p_token  text,
   p_user_id uuid,
@@ -1059,9 +965,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 8) แบน / ปลดแบน (ต้องยืนยันรหัสผ่านของบัญชีที่ล็อกอินอยู่)
--- ---------------------------------------------------------------------------
 drop function if exists public.admin_ban_player(text, uuid, text);
 
 create or replace function public.admin_ban_player(
@@ -1141,14 +1044,9 @@ begin
 end;
 $$;
 
--- ล้าง ban ที่ไม่มีแถวคะแนนค้างจากเวอร์ชันก่อน (แบนแล้วลบ score)
--- ทำให้ banned_count ตรงกับรายการที่ปลดแบนได้จากหน้าแอดมิน
 delete from public.banned_players b
  where not exists (select 1 from public.scores s where s.user_id = b.user_id);
 
--- ---------------------------------------------------------------------------
--- 8.1) ตรวจสอบรอบเกม / anti-bot (ทุก role อ่านได้, editor จัดการได้)
--- ---------------------------------------------------------------------------
 create or replace function public.admin_runs_list(
   p_token  text,
   p_status text default 'all',
@@ -1329,7 +1227,6 @@ begin
   end if;
   if v_action = 'approve' and coalesce(p_save_score, false) then
     perform public.admin_require_role(v_admin, array['owner']);
-    -- บันทึกคะแนนเข้าอันดับเป็นการเขียนคะแนน ต้องยืนยันรหัสผ่านเหมือน admin_set_score
     perform public.admin_assert_password(v_admin, p_password);
   end if;
 
@@ -1389,7 +1286,6 @@ begin
     return jsonb_build_object('ok', true, 'action', v_action);
   end if;
 
-  -- approve
   if v_run.status <> 'finished' then
     raise exception using errcode = '22023', message = 'run_not_finished';
   end if;
@@ -1447,9 +1343,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 8.2) สถิติระบบ (ทุก role อ่านได้)
--- ---------------------------------------------------------------------------
 create or replace function public.admin_stats(p_token text)
 returns jsonb
 language plpgsql
@@ -1491,14 +1384,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 9) รหัสผ่านของตัวเอง + audit log
---    การเปลี่ยนรหัสผ่านต้องกรอก "รหัสผ่านพิเศษ" ซึ่งตรวจฝั่งฐานข้อมูลเท่านั้น
---    (ถ้าเคยติดตั้งเวอร์ชันก่อนที่มี 3 พารามิเตอร์ ให้ลบของเดิมทิ้งก่อน
---     เพื่อไม่ให้เรียกข้ามการตรวจรหัสผ่านพิเศษได้)
---    ตรวจ "รหัสผ่านปัจจุบัน" ก่อน "รหัสผ่านพิเศษ" เพื่อไม่ให้เดาคำพิเศษ
---    ได้โดยไม่รู้รหัสผ่านจริง
--- ---------------------------------------------------------------------------
 drop function if exists public.admin_change_password(text, text, text);
 
 create or replace function public.admin_change_password(
@@ -1562,10 +1447,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 9.1) ตั้ง/เปลี่ยน "รหัสผ่านพิเศษ" (เฉพาะ owner)
---      ต้องยืนยันด้วยรหัสผ่านปัจจุบัน + รหัสผ่านพิเศษเดิม
--- ---------------------------------------------------------------------------
 create or replace function public.admin_set_special_password(
   p_token text,
   p_current text,
@@ -1652,9 +1533,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 10) จัดการบัญชีแอดมิน (owner เท่านั้น)
--- ---------------------------------------------------------------------------
 create or replace function public.admin_list_admins(p_token text)
 returns jsonb
 language plpgsql
@@ -1826,12 +1704,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 10.0.1) ลบบัญชีแอดมิน (owner เท่านั้น)
---         ต้องยืนยัน 3 ชั้น: รหัสของแอดมินที่ล็อกอินอยู่ + รหัสผ่านพิเศษ - ทั่วไป
---         + รหัสผ่านพิเศษ - Owner ตรวจทั้งหมดใน DB (client ส่งแค่ข้อความ)
---         ห้ามลบตัวเองและต้องเหลือ owner ที่ active อย่างน้อย 1 คนเสมอ
--- ---------------------------------------------------------------------------
 drop function if exists public.admin_delete_admin(text, uuid, text, text);
 drop function if exists public.admin_delete_admin(text, uuid, text, text, text);
 
@@ -1859,7 +1731,6 @@ begin
   perform public.admin_require_role(v_admin, array['owner']);
   perform public.admin_assert_ready(v_admin);
 
-  -- ตรวจรหัสของแอดมินที่ล็อกอินอยู่ก่อนเสมอ (ผิด -> invalid_password / 28P01)
   perform public.admin_assert_password(v_admin, p_auth_password);
 
   if char_length(v_special) > 256 then
@@ -1924,10 +1795,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 10.1) เซสชันแอดมิน (owner เท่านั้น)
---       เปิดเผยเฉพาะ hash ของ token ไม่ใช่ token จริง และตัด session ตัวเองไม่ได้
--- ---------------------------------------------------------------------------
 create or replace function public.admin_sessions_list(
   p_token    text,
   p_admin_id uuid default null
@@ -2016,11 +1883,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 10.2) ปิด/เปิดใช้งานเซิร์ฟเวอร์เกม (owner / editor)
---       ผู้เล่นจะถูกบล็อกไม่ให้เริ่มรอบหรือตอบข้อใหม่ระหว่างปิดใช้งาน
---       การเปิด/ปิดต้องใส่รหัสยืนยัน ซึ่งตรวจจาก bcrypt hash ในฐานข้อมูล
--- ---------------------------------------------------------------------------
 create or replace function public.game_server_status()
 returns jsonb
 language plpgsql
@@ -2127,9 +1989,6 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- 11) สิทธิ์การเรียกใช้ (grant)
--- ---------------------------------------------------------------------------
 revoke all on function public.admin_assert_session(text) from public, anon, authenticated;
 revoke all on function public.admin_assert_ready(public.admin_users) from public, anon, authenticated;
 revoke all on function public.admin_assert_password(public.admin_users, text) from public, anon, authenticated;
@@ -2167,9 +2026,6 @@ revoke all on function public.admin_reset_admin_password(text, uuid, text, text)
 revoke all on function public.admin_delete_admin(text, uuid, text, text, text) from public;
 revoke all on function public.block_banned_player_writes() from public, anon, authenticated;
 
--- หมายเหตุเรื่อง grant: หน้าแอดมินไม่ได้ signInAnonymously จึงเรียก RPC ใน role anon
--- (session ถูกตรวจด้วย p_token ภายในฟังก์ชัน) การ revoke anon จะทำให้หน้าแอดมินใช้งานไม่ได้
--- จึงคง grant ให้ anon, authenticated แต่ revoke จาก public แล้วตรวจสอบด้วย security_check.sql
 
 grant execute on function public.admin_login(text, text) to anon, authenticated;
 grant execute on function public.game_server_status() to anon, authenticated;
@@ -2201,46 +2057,6 @@ grant execute on function public.admin_set_admin_active(text, uuid, boolean, tex
 grant execute on function public.admin_reset_admin_password(text, uuid, text, text) to anon, authenticated;
 grant execute on function public.admin_delete_admin(text, uuid, text, text, text) to anon, authenticated;
 
--- ---------------------------------------------------------------------------
--- 12) บัญชีผู้ดูแลคนแรก
---     ไม่ seed รหัสผ่านใด ๆ ในไฟล์นี้ เพราะไฟล์ถูก commit ลง repo
---     ให้สร้างผู้ดูแลคนแรกด้วยคำสั่งด้านล่างใน SQL Editor โดยแก้ค่า <...> ก่อนรัน
---     (ใช้เฉพาะตอนติดตั้งใหม่ที่ยังไม่มี admin_users เท่านั้น)
--- ---------------------------------------------------------------------------
--- insert into public.admin_users (username, password_hash, role, must_change_password, password)
--- values ('admin',
---         extensions.crypt('<STRONG_PASSWORD>', extensions.gen_salt('bf', 10)),
---         'owner', true, '');
---
--- insert into public.admin_settings (id, special_password_hash)
--- values (true, extensions.crypt('<STRONG_SPECIAL_PASSWORD>', extensions.gen_salt('bf', 10)))
--- on conflict (id) do update
---   set special_password_hash = excluded.special_password_hash,
---       updated_at = now();
---
--- ตั้งรหัสยืนยันสำหรับปิด/เปิดใช้งานเซิร์ฟเวอร์ (ต้องทำครั้งแรกก่อนใช้เมนูนี้)
--- insert into public.game_server_settings (id, maintenance, maintenance_password_hash)
--- values (true, false, extensions.crypt('<STRONG_MAINTENANCE_PASSWORD>', extensions.gen_salt('bf', 10)))
--- on conflict (id) do update
---   set maintenance_password_hash = excluded.maintenance_password_hash,
---       updated_at = now();
---
--- หมายเหตุ: ถ้าเป็นฐานข้อมูลเดิมที่ยังไม่มี admin_settings ให้ตั้งรหัสผ่านพิเศษ
--- ด้วยคำสั่ง insert ด้านบนก่อน แล้วจึงเปลี่ยนรหัสผ่าน admin ผ่านหน้าเว็บ
---
--- หมุนรหัสผ่านผู้ดูแลเดิม (กรณีเคยมีรหัส default มาก่อน):
--- update public.admin_users
--- set password_hash = extensions.crypt('<NEW_STRONG_PASSWORD>', extensions.gen_salt('bf', 10)),
---     password = '',
---     must_change_password = true
--- where username = 'admin';
--- delete from public.admin_sessions;
 
--- ---------------------------------------------------------------------------
--- 13) ตรวจสอบผลติดตั้ง (เรียกดูได้)
--- ---------------------------------------------------------------------------
--- select username, role, is_active, must_change_password, last_login_at from public.admin_users;
 
--- แจ้ง PostgREST ให้โหลดรายชื่อฟังก์ชัน/พารามิเตอร์ใหม่ (เช่น หลังเปลี่ยน
--- signature ของ admin_change_password) โดยไม่ต้องรอ cache หมดอายุ
 notify pgrst, 'reload schema';
