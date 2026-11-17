@@ -1,12 +1,7 @@
-/* ==========================================================================
-   Waste Sorting Game — Admin
-   Design system: PipelinePro (indigo / cyan / orange, light surfaces)
-   ========================================================================== */
 
 :root{
   color-scheme:light;
 
-  /* colors */
   --bg:#fafafa;
   --panel:#ffffff;
   --surface:#ffffff;
@@ -35,18 +30,15 @@
   --error-ink:#dc2626;
   --error-tint:#fef2f2;
 
-  /* compatibility aliases used by older rules */
   --green:#4f46e5;
   --green-ink:#ffffff;
   --danger:#ef4444;
 
-  /* radius */
   --radius-sm:4px;
   --radius:8px;
   --radius-lg:12px;
   --radius-xl:20px;
 
-  /* elevation */
   --shadow-subtle:0 1px 2px rgba(24,24,27,.05);
   --shadow-medium:0 4px 6px -1px rgba(24,24,27,.07),0 2px 4px -2px rgba(24,24,27,.05);
   --shadow-large:0 10px 15px -3px rgba(24,24,27,.08),0 4px 6px -4px rgba(24,24,27,.04);
@@ -58,7 +50,6 @@
   --font-mono:"Source Code Pro",ui-monospace,monospace;
 }
 
-/* ---------- dark theme ---------- */
 html[data-theme="dark"]{
   color-scheme:dark;
 
@@ -126,7 +117,6 @@ code,kbd{font-family:var(--font-mono);font-size:.875em}
 
 .shell{width:min(1120px,calc(100% - 32px));margin:0 auto;padding:40px 0 64px}
 
-/* ---------- surfaces ---------- */
 .panel,.stat-card{
   border:1px solid var(--line);
   border-radius:var(--radius-lg);
@@ -150,7 +140,6 @@ code,kbd{font-family:var(--font-mono);font-size:.875em}
 
 .muted{color:var(--muted)}
 
-/* ---------- forms ---------- */
 .stack{display:grid;gap:9px;margin-top:24px}
 .stack label{margin-top:5px;font-weight:500;font-size:13px;color:var(--text-2)}
 
@@ -175,7 +164,6 @@ textarea{resize:vertical;line-height:1.5}
 
 select{padding:6px 8px;cursor:pointer}
 
-/* ---------- buttons ---------- */
 .button{
   display:inline-flex;
   align-items:center;
@@ -210,12 +198,10 @@ select{padding:6px 8px;cursor:pointer}
 
 .button.small{min-height:32px;padding:6px 10px;font-size:13px;border-radius:var(--radius-sm)}
 
-/* ---------- messages ---------- */
 .message{min-height:24px;margin:12px 0 0;color:var(--error-ink);font-size:14px}
 .message.success{color:var(--success-ink)}
 .message.info{color:var(--muted)}
 
-/* ---------- top bar ---------- */
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:22px}
 .top-actions{display:flex;gap:8px;flex-wrap:wrap}
 .admin-meta{margin:2px 0 0;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted)}
@@ -233,7 +219,6 @@ select{padding:6px 8px;cursor:pointer}
 }
 .session-timer.warning{color:var(--warning-ink);border-color:#fed7aa;background:var(--tertiary-tint)}
 
-/* ---------- settings menu (top-right) ---------- */
 .settings-menu{position:relative}
 .settings-trigger{list-style:none;cursor:pointer;gap:8px}
 .settings-trigger::-webkit-details-marker{display:none}
@@ -309,7 +294,6 @@ select{padding:6px 8px;cursor:pointer}
 .settings-session.warning{color:#c2410c;font-weight:600}
 .settings-sep{height:1px;margin:6px 4px;background:var(--line-soft)}
 
-/* ---------- theme toggle ---------- */
 .theme-toggle{
   width:38px;
   min-width:38px;
@@ -331,7 +315,6 @@ html[data-theme="dark"] .theme-toggle::before{
   mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/%3E%3C/svg%3E");
 }
 
-/* ---------- dark theme component fixes ---------- */
 html[data-theme="dark"] .stat-card:hover{border-color:#3f3f46}
 html[data-theme="dark"] input:hover,
 html[data-theme="dark"] select:hover,
@@ -366,12 +349,10 @@ html[data-theme="dark"] .pill.info{border-color:#155e75;background:var(--seconda
 html[data-theme="dark"] .toast{background:#fafafa;border-color:#e4e4e7;color:#18181b}
 html[data-theme="dark"] .toast.error{background:#7f1d1d;border-color:#991b1b;color:#fef2f2}
 
-/* ---------- stats ---------- */
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0}
 .stat-card{display:grid;gap:6px;padding:16px 18px;color:var(--muted);font-size:12px;font-weight:500;letter-spacing:.01em}
 .stat-card strong{color:var(--text);font-family:var(--font-head);font-size:28px;font-weight:700;line-height:1.1;letter-spacing:.02em;font-variant-numeric:tabular-nums}
 
-/* ---------- badges ---------- */
 .badge{
   display:inline-block;
   padding:2px 9px;
@@ -389,7 +370,6 @@ html[data-theme="dark"] .toast.error{background:#7f1d1d;border-color:#991b1b;col
 .badge.active{background:var(--success-tint);border-color:#bbf7d0;color:var(--success-ink)}
 .badge.banned{background:var(--error-tint);border-color:#fecaca;color:var(--error-ink)}
 
-/* ---------- warning banner ---------- */
 .warning{
   display:flex;
   align-items:center;
@@ -407,7 +387,6 @@ html[data-theme="dark"] .toast.error{background:#7f1d1d;border-color:#991b1b;col
 .link-button{border:0;background:none;color:#c2410c;font-weight:600;text-decoration:underline;cursor:pointer;padding:0;font-size:14px}
 .link-button:hover{color:#9a3412}
 
-/* ---------- tabs (filter chips) ---------- */
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:22px 0 14px;border-bottom:1px solid var(--line);padding-bottom:10px}
 .tab{
   border:1px solid var(--line);
@@ -425,7 +404,6 @@ html[data-theme="dark"] .toast.error{background:#7f1d1d;border-color:#991b1b;col
 .tab[aria-selected="true"]{background:var(--primary);border-color:transparent;color:#fff;font-weight:600}
 .tab[aria-selected="true"]:hover{background:var(--primary-hover)}
 
-/* ---------- page / tab transitions ---------- */
 @keyframes view-enter{
   from{opacity:0;transform:translateY(10px)}
   to{opacity:1;transform:none}
@@ -442,7 +420,6 @@ html[data-theme="dark"] .toast.error{background:#7f1d1d;border-color:#991b1b;col
 .tab-enter[data-enter="right"]{animation:tab-enter-right .26s cubic-bezier(.22,1,.36,1) both}
 .tab-enter[data-enter="left"]{animation:tab-enter-left .26s cubic-bezier(.22,1,.36,1) both}
 
-/* ---------- tables ---------- */
 .table-panel{padding:20px}
 .table-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:15px}
 .table-heading p{margin:0;font-size:13px;color:var(--muted)}
@@ -480,7 +457,6 @@ td.actions{white-space:nowrap}
 .pager{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .result-count{margin:12px 2px 0;font-size:13px;color:var(--muted)}
 
-/* ---------- password field ---------- */
 .password-field{position:relative;display:flex;align-items:center}
 .password-field input{padding-right:80px}
 .password-toggle{
@@ -507,7 +483,6 @@ td.actions{white-space:nowrap}
   mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 3 18 18'/%3E%3Cpath d='M10.6 5.2A11 11 0 0 1 12 5c6.4 0 10 7 10 7a18 18 0 0 1-2.6 3.6'/%3E%3Cpath d='M6.5 6.6A17.7 17.7 0 0 0 2 12s3.6 7 10 7a10.9 10.9 0 0 0 5.5-1.5'/%3E%3Cpath d='M9.9 9.9a3 3 0 0 0 4.2 4.2'/%3E%3C/svg%3E");
 }
 
-/* ---------- dialogs ---------- */
 .dialog{
   width:min(92vw,440px);
   border:1px solid var(--line);
@@ -534,7 +509,6 @@ td.actions{white-space:nowrap}
 .dialog-actions .primary{margin-top:0}
 .dialog-results{display:grid;gap:9px;margin-top:12px;max-height:55vh;overflow:auto;padding-right:2px}
 
-/* ---------- misc panels ---------- */
 .password-panel{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(260px,1.2fr);gap:8px 28px;align-items:start;margin:20px 0;padding:20px}
 .password-panel>div p{margin:6px 0 0;font-size:13px}
 .password-panel .stack{margin-top:0}
@@ -557,7 +531,6 @@ td.actions{white-space:nowrap}
 .login-hint{margin-top:14px;font-size:13px;color:var(--muted)}
 .login-hint code{color:var(--primary)}
 
-/* ---------- toast ---------- */
 .toast{
   position:fixed;left:50%;bottom:26px;transform:translateX(-50%);
   margin:0;padding:11px 18px;border-radius:var(--radius);
@@ -567,7 +540,6 @@ td.actions{white-space:nowrap}
 }
 .toast.error{background:#7f1d1d;border-color:#991b1b;color:#fef2f2}
 
-/* ---------- command center ---------- */
 .command-panel{padding:20px}
 .command-groups{display:grid;gap:14px}
 .command-group{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--bg);padding:16px}
@@ -604,7 +576,6 @@ td.actions{white-space:nowrap}
 .mini-list li{color:var(--muted)}
 .mini-list strong{color:var(--text)}
 
-/* ---------- pills ---------- */
 .pill{
   display:inline-flex;align-items:center;
   border:1px solid var(--line);border-radius:999px;
@@ -616,11 +587,9 @@ td.actions{white-space:nowrap}
 .pill.danger{border-color:#fecaca;background:var(--error-tint);color:var(--error-ink)}
 .pill.info{border-color:#a5f3fc;background:var(--secondary-tint);color:#0e7490}
 
-/* ---------- utilities ---------- */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 [hidden]{display:none!important}
 
-/* ---------- responsive ---------- */
 @media(max-width:900px){
   .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
@@ -648,9 +617,6 @@ td.actions{white-space:nowrap}
   .password-toggle{min-width:62px;height:28px;font-size:11.5px}
 }
 
-/* ==========================================================================
-   Button micro-interactions
-   ========================================================================== */
 .button{
   position:relative;
   overflow:hidden;
@@ -665,7 +631,6 @@ td.actions{white-space:nowrap}
 .button:hover{transform:translateY(-1px);box-shadow:var(--shadow-medium)}
 .button:active{transform:translateY(0) scale(.97);box-shadow:var(--shadow-subtle)}
 
-/* light sweep for filled buttons */
 .button.primary::after,
 .button.danger::after{
   content:"";
@@ -683,34 +648,27 @@ td.actions{white-space:nowrap}
 
 .button.secondary:hover{box-shadow:var(--shadow-medium)}
 
-/* icon/label lift inside small buttons */
 .button.small:hover{transform:translateY(-1px)}
 
-/* tabs behave like filter chips */
 .tab{transition:background .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease,transform .12s ease}
 .tab:hover{transform:translateY(-1px)}
 .tab:active{transform:scale(.96)}
 .tab[aria-selected="true"]{box-shadow:var(--shadow-medium)}
 
-/* password reveal button */
 .password-toggle{transition:background .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease,transform .12s ease}
 .password-toggle:hover{transform:translateY(-50%) scale(1.04)}
 .password-toggle:active{transform:translateY(-50%) scale(.94)}
 
-/* command cards */
 .command-card:active{transform:translateY(0) scale(.99);box-shadow:var(--shadow-subtle)}
 
-/* sortable table headers */
 th .sort{transition:color .15s ease,opacity .15s ease}
 th .sort:hover{color:var(--primary)}
 th[aria-sort] .sort{color:var(--primary)}
 
-/* inline text buttons */
 .link-button{transition:color .15s ease,opacity .15s ease}
 .link-button:hover{opacity:.8}
 .link-button:active{opacity:.65}
 
-/* keyboard focus stays crisp */
 .button:focus-visible,
 .tab:focus-visible,
 .password-toggle:focus-visible,
