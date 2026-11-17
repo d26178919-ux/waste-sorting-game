@@ -26,6 +26,31 @@ create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
 
 -- ---------------------------------------------------------------------------
+-- 0.1) ลบ RPC เก่าที่ค้างจาก deployment รุ่นก่อน (ไม่มีในระบบปัจจุบัน)
+--      ตัวอย่างเช่น admin_clear_login_attempt ที่ล้าง lockout ได้
+--      ถ้าทิ้งไว้จะถูก security_check.sql ตรวจจับ และอาจถูกเรียกจาก anon ได้
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  r record;
+begin
+  for r in
+    select p.oid::regprocedure as sig
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname in (
+             'admin_clear_login_attempt',
+             'admin_get_user_for_login',
+             'admin_is_login_locked',
+             'admin_record_login_failure'
+           )
+  loop
+    execute format('drop function %s', r.sig);
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- 1) ตาราง admin_users (รองรับทั้งการติดตั้งใหม่และการอัปเกรดของเดิม)
 -- ---------------------------------------------------------------------------
 create table if not exists public.admin_users (
@@ -58,13 +83,27 @@ alter table public.admin_users alter column password drop not null;
 alter table public.admin_users drop constraint if exists admin_users_user_id_fkey;
 alter table public.admin_users alter column user_id set default gen_random_uuid();
 
--- แปลงรหัสผ่าน plaintext เดิมให้เป็น hash แล้วลบทิ้ง
+-- แปลงรหัสผ่าน plaintext เดิมให้เป็น hash แล้วลบทิ้ง (รวมกรณี hash เดิมไม่ใช่ bcrypt)
 update public.admin_users
-   set password_hash = extensions.crypt(password, extensions.gen_salt('bf', 10)),
+   set password_hash = case
+         when password_hash ~ '^\$2[aby]\$\d{2}\$' then password_hash
+         else extensions.crypt(password, extensions.gen_salt('bf', 10))
+       end,
        password = '',
        must_change_password = true
- where password_hash is null
-   and coalesce(password, '') <> '';
+  where coalesce(password, '') <> '';
+
+-- ห้ามมี plaintext ค้างในตารางอีกในอนาคต
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'admin_users_no_plaintext' and conrelid = 'public.admin_users'::regclass
+  ) then
+    alter table public.admin_users
+      add constraint admin_users_no_plaintext check (coalesce(password, '') = '');
+  end if;
+end $$;
 
 -- ถ้าอัปเกรดจากระบบเดิม (มีแต่ role editor) ให้มี owner อย่างน้อย 1 คน
 update public.admin_users
@@ -154,6 +193,17 @@ create table if not exists public.admin_login_attempts (
 create index if not exists admin_login_attempts_updated_idx
   on public.admin_login_attempts (updated_at);
 
+-- rate limit ตาม IP (เก็บแค่ hash ของ IP ไม่เก็บ IP ดิบ) เพื่อกันโจมตีแบบกระจายหลาย username
+create table if not exists public.admin_login_ip_attempts (
+  ip_hash         text primary key,
+  fail_count      integer not null default 0,
+  first_failed_at timestamptz not null default now(),
+  locked_until    timestamptz,
+  updated_at      timestamptz not null default now()
+);
+create index if not exists admin_login_ip_updated_idx
+  on public.admin_login_ip_attempts (updated_at);
+
 create table if not exists public.banned_players (
   user_id    uuid primary key,
   reason     text,
@@ -173,6 +223,7 @@ create index if not exists admin_audit_log_created_idx on public.admin_audit_log
 
 alter table public.admin_sessions enable row level security;
 alter table public.admin_login_attempts enable row level security;
+alter table public.admin_login_ip_attempts enable row level security;
 alter table public.banned_players enable row level security;
 alter table public.admin_audit_log enable row level security;
 alter table public.admin_settings enable row level security;
@@ -180,6 +231,7 @@ alter table public.game_server_settings enable row level security;
 
 revoke all on public.admin_sessions from public, anon, authenticated;
 revoke all on public.admin_login_attempts from public, anon, authenticated;
+revoke all on public.admin_login_ip_attempts from public, anon, authenticated;
 revoke all on public.banned_players from public, anon, authenticated;
 revoke all on public.admin_audit_log from public, anon, authenticated;
 revoke all on public.admin_settings from public, anon, authenticated;
@@ -281,7 +333,7 @@ end;
 $$;
 
 -- ยืนยันรหัสผ่านของบัญชีแอดมินที่ล็อกอินอยู่ ก่อนทำรายการที่ย้อนกลับยาก
--- (ตั้งคะแนนใหม่ / รีเซ็ตคะแนน / ลบคะแนน / แบน / ปลดแบน)
+-- (ตั้ง/รีเซ็ต/ลบคะแนน, แบน/ปลดแบน, จัดการบัญชีแอดมิน, ลบบัญชีแอดมิน)
 create or replace function public.admin_assert_password(
   p_admin    public.admin_users,
   p_password text
@@ -343,6 +395,10 @@ declare
   v_expires  timestamptz := now() + interval '8 hours';
   -- hash หลอกสำหรับเทียบเมื่อไม่พบผู้ใช้ เพื่อให้เวลาตอบใกล้เคียงกรณีมีผู้ใช้
   v_dummy    constant text := '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+  v_headers  jsonb := nullif(current_setting('request.headers', true), '')::jsonb;
+  v_ip       text;
+  v_ip_hash  text;
+  v_ip_attempt public.admin_login_ip_attempts;
 begin
   if v_key = '' or coalesce(p_password, '') = '' then
     return jsonb_build_object('ok', false, 'error', 'missing_credentials');
@@ -355,7 +411,31 @@ begin
 
   -- ล้างข้อมูลเก่าทุกครั้ง ไม่ใช่เฉพาะตอนล็อกอินผิด
   delete from public.admin_login_attempts where updated_at < now() - interval '1 hour';
+  delete from public.admin_login_ip_attempts where updated_at < now() - interval '1 hour';
   delete from public.admin_sessions where expires_at <= now();
+
+  -- rate limit ตาม IP (hash ไว้ ไม่เก็บ IP ดิบในฐานข้อมูล)
+  -- เชื่อเฉพาะ cf-connecting-ip ที่ reverse proxy (Cloudflare) เขียนทับจริง
+  -- ห้ามใช้ x-forwarded-for / x-real-ip เพราะ client ส่ง header ปลอมได้
+  -- ถ้าไม่มี header นี้ให้ข้าม bucket (ยังเหลือ lockout ต่อ username 5 ครั้ง)
+  v_ip := nullif(btrim(coalesce(v_headers ->> 'cf-connecting-ip', '')), '');
+  if v_ip is not null then
+    v_ip_hash := encode(extensions.digest(v_ip, 'sha256'), 'hex');
+
+    select * into v_ip_attempt from public.admin_login_ip_attempts where ip_hash = v_ip_hash;
+    if found and v_ip_attempt.locked_until is not null then
+      if v_ip_attempt.locked_until > now() then
+        return jsonb_build_object(
+          'ok', false,
+          'error', 'too_many_attempts',
+          'retry_after', v_ip_attempt.locked_until
+        );
+      end if;
+      update public.admin_login_ip_attempts
+         set fail_count = 0, locked_until = null
+       where ip_hash = v_ip_hash;
+    end if;
+  end if;
 
   select * into v_attempt from public.admin_login_attempts where username = v_key;
   if found and v_attempt.locked_until is not null then
@@ -377,21 +457,11 @@ begin
    where lower(btrim(a.username)) = v_key
      and a.is_active;
 
-  if found then
-    if v_admin.password_hash is not null then
-      v_ok := (extensions.crypt(p_password, v_admin.password_hash) = v_admin.password_hash);
-    elsif coalesce(v_admin.password, '') <> '' then
-      -- ยังไม่เคย migrate: เทียบแบบเดิมแล้วอัปเกรดเป็น hash ทันที
-      v_ok := (v_admin.password = p_password);
-      if v_ok then
-        update public.admin_users
-           set password_hash = extensions.crypt(p_password, extensions.gen_salt('bf', 10)),
-               password = ''
-         where user_id = v_admin.user_id;
-      end if;
-    end if;
+  if found and v_admin.password_hash is not null
+     and v_admin.password_hash ~ '^\$2[aby]\$\d{2}\$' then
+    v_ok := (extensions.crypt(p_password, v_admin.password_hash) = v_admin.password_hash);
   else
-    -- ไม่พบผู้ใช้: เผาเวลาเท่ากับการตรวจ bcrypt เพื่อลด username enumeration
+    -- ไม่พบผู้ใช้ / hash ไม่ถูกต้อง: เผาเวลาเท่ากับ bcrypt และไม่มีทางเทียบ plaintext
     perform extensions.crypt(p_password, v_dummy);
   end if;
 
@@ -406,6 +476,18 @@ begin
           end,
           updated_at = now();
 
+    if v_ip_hash is not null then
+      insert into public.admin_login_ip_attempts as i (ip_hash, fail_count, first_failed_at, updated_at)
+      values (v_ip_hash, 1, now(), now())
+      on conflict (ip_hash) do update
+        set fail_count = i.fail_count + 1,
+            locked_until = case
+              when i.fail_count + 1 >= 20 then now() + interval '15 minutes'
+              else i.locked_until
+            end,
+            updated_at = now();
+    end if;
+
     select fail_count into v_fail
       from public.admin_login_attempts where username = v_key;
 
@@ -417,6 +499,9 @@ begin
   end if;
 
   delete from public.admin_login_attempts where username = v_key;
+  if v_ip_hash is not null then
+    delete from public.admin_login_ip_attempts where ip_hash = v_ip_hash;
+  end if;
 
   v_token := encode(extensions.gen_random_bytes(32), 'hex');
 
@@ -506,7 +591,7 @@ begin
   select count(*) into v_total
     from public.scores s
     left join public.banned_players b on b.user_id = s.user_id
-   where (v_search = '' or lower(s.name) like '%' || lower(v_search) || '%')
+   where (v_search = '' or position(lower(v_search) in lower(s.name)) > 0)
      and (p_banned is null or (b.user_id is not null) = p_banned);
 
   select coalesce(jsonb_agg(row_to_json(r)), '[]'::jsonb) into v_rows
@@ -522,7 +607,7 @@ begin
              b.created_at as banned_at
         from public.scores s
         left join public.banned_players b on b.user_id = s.user_id
-       where (v_search = '' or lower(s.name) like '%' || lower(v_search) || '%')
+       where (v_search = '' or position(lower(v_search) in lower(s.name)) > 0)
          and (p_banned is null or (b.user_id is not null) = p_banned)
        order by
          case when v_sort = 'name'       and v_dir = 'asc'  then s.name       end asc,
@@ -1742,6 +1827,104 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- 10.0.1) ลบบัญชีแอดมิน (owner เท่านั้น)
+--         ต้องยืนยัน 3 ชั้น: รหัสของแอดมินที่ล็อกอินอยู่ + รหัสผ่านพิเศษ - ทั่วไป
+--         + รหัสผ่านพิเศษ - Owner ตรวจทั้งหมดใน DB (client ส่งแค่ข้อความ)
+--         ห้ามลบตัวเองและต้องเหลือ owner ที่ active อย่างน้อย 1 คนเสมอ
+-- ---------------------------------------------------------------------------
+drop function if exists public.admin_delete_admin(text, uuid, text, text);
+drop function if exists public.admin_delete_admin(text, uuid, text, text, text);
+
+create or replace function public.admin_delete_admin(
+  p_token                text,
+  p_user_id              uuid,
+  p_auth_password        text,
+  p_special_password     text,
+  p_maintenance_password text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_admin            public.admin_users;
+  v_target           public.admin_users;
+  v_special          text := btrim(coalesce(p_special_password, ''));
+  v_maintenance      text := btrim(coalesce(p_maintenance_password, ''));
+  v_special_hash     text;
+  v_maintenance_hash text;
+begin
+  v_admin := public.admin_assert_session(p_token);
+  perform public.admin_require_role(v_admin, array['owner']);
+  perform public.admin_assert_ready(v_admin);
+
+  -- ตรวจรหัสของแอดมินที่ล็อกอินอยู่ก่อนเสมอ (ผิด -> invalid_password / 28P01)
+  perform public.admin_assert_password(v_admin, p_auth_password);
+
+  if char_length(v_special) > 256 then
+    raise exception using errcode = '28P01', message = 'invalid_special_password';
+  end if;
+  if char_length(v_maintenance) > 256 then
+    raise exception using errcode = '28P01', message = 'invalid_maintenance_password';
+  end if;
+
+  select special_password_hash into v_special_hash
+    from public.admin_settings
+   where id;
+  if v_special_hash is null or v_special_hash !~ '^\$2[aby]\$\d{2}\$' then
+    raise exception using errcode = '55000', message = 'special_password_not_configured';
+  end if;
+  if extensions.crypt(v_special, v_special_hash) <> v_special_hash then
+    raise exception using errcode = '28P01', message = 'invalid_special_password';
+  end if;
+
+  select maintenance_password_hash into v_maintenance_hash
+    from public.game_server_settings
+   where id = true;
+  if v_maintenance_hash is null or v_maintenance_hash !~ '^\$2[aby]\$\d{2}\$' then
+    raise exception using errcode = '55000', message = 'maintenance_not_configured';
+  end if;
+  if extensions.crypt(v_maintenance, v_maintenance_hash) <> v_maintenance_hash then
+    raise exception using errcode = '28P01', message = 'invalid_maintenance_password';
+  end if;
+
+  if p_user_id = v_admin.user_id then
+    raise exception using errcode = '22023', message = 'cannot_delete_self';
+  end if;
+
+  select * into v_target
+    from public.admin_users
+   where user_id = p_user_id
+   for update;
+  if not found then
+    raise exception using errcode = 'P0002', message = 'admin_not_found';
+  end if;
+
+  if v_target.role = 'owner'
+     and not exists (
+       select 1 from public.admin_users
+        where role = 'owner'
+          and is_active
+          and user_id <> p_user_id
+     ) then
+    raise exception using errcode = '22023', message = 'last_owner';
+  end if;
+
+  delete from public.admin_sessions where admin_id = p_user_id;
+  delete from public.admin_users where user_id = p_user_id;
+
+  perform public.admin_log(
+    v_admin.user_id,
+    'delete_admin',
+    p_user_id,
+    jsonb_build_object('username', v_target.username, 'role', v_target.role)
+  );
+  return jsonb_build_object('ok', true, 'user_id', p_user_id, 'username', v_target.username);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- 10.1) เซสชันแอดมิน (owner เท่านั้น)
 --       เปิดเผยเฉพาะ hash ของ token ไม่ใช่ token จริง และตัด session ตัวเองไม่ได้
 -- ---------------------------------------------------------------------------
@@ -1981,7 +2164,12 @@ revoke all on function public.admin_list_admins(text) from public;
 revoke all on function public.admin_add_admin(text, text, text, text, text) from public;
 revoke all on function public.admin_set_admin_active(text, uuid, boolean, text) from public;
 revoke all on function public.admin_reset_admin_password(text, uuid, text, text) from public;
+revoke all on function public.admin_delete_admin(text, uuid, text, text, text) from public;
 revoke all on function public.block_banned_player_writes() from public, anon, authenticated;
+
+-- หมายเหตุเรื่อง grant: หน้าแอดมินไม่ได้ signInAnonymously จึงเรียก RPC ใน role anon
+-- (session ถูกตรวจด้วย p_token ภายในฟังก์ชัน) การ revoke anon จะทำให้หน้าแอดมินใช้งานไม่ได้
+-- จึงคง grant ให้ anon, authenticated แต่ revoke จาก public แล้วตรวจสอบด้วย security_check.sql
 
 grant execute on function public.admin_login(text, text) to anon, authenticated;
 grant execute on function public.game_server_status() to anon, authenticated;
@@ -2011,6 +2199,7 @@ grant execute on function public.admin_list_admins(text) to anon, authenticated;
 grant execute on function public.admin_add_admin(text, text, text, text, text) to anon, authenticated;
 grant execute on function public.admin_set_admin_active(text, uuid, boolean, text) to anon, authenticated;
 grant execute on function public.admin_reset_admin_password(text, uuid, text, text) to anon, authenticated;
+grant execute on function public.admin_delete_admin(text, uuid, text, text, text) to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 12) บัญชีผู้ดูแลคนแรก
